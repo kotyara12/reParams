@@ -154,48 +154,6 @@ void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
   };
 }
 
-void paramsMqttSubscribes()
-{
-  rlog_i(tagPARAMS, "Subscribing to parameter topics...");
-
-  OPTIONS_LOCK();
-
-  if (paramsList) {
-    // Recovering subscriptions to topics for which there was no subscription earlier
-    paramsEntryHandle_t item;
-    STAILQ_FOREACH(item, paramsList, next) {
-      if (item->topic == NULL) {
-        paramsMqttSubscribeEntry(item);
-        vTaskDelay(CONFIG_MQTT_SUBSCRIBE_INTERVAL / portTICK_RATE_MS);
-      };
-    };
-  };
-
-  OPTIONS_UNLOCK();
-}
-
-void paramsMqttResetSubscribes()
-{
-  rlog_i(tagPARAMS, "Resetting parameter topics...");
-
-  OPTIONS_LOCK();
-
-  if (paramsList) {
-    // Delete all topics from the heap
-    paramsEntryHandle_t item;
-    STAILQ_FOREACH(item, paramsList, next) {
-      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-      free(item->confirm);
-      item->confirm = NULL;
-      #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-      free(item->topic);
-      item->topic = NULL;
-    };
-  };
-
-  OPTIONS_UNLOCK();
-}
-
 void paramsRegValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
   const char* name_group, const char* name_key, const char* name_friendly, const int qos, 
   void * value)
@@ -380,7 +338,7 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
   if (new_value) free(new_value);
 }
 
-void mqttOnIncomingMessage(char *topic, uint8_t *payload, size_t len)
+void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
 {
   OPTIONS_LOCK();
   ledSysOn(true);  
@@ -415,6 +373,48 @@ void mqttOnIncomingMessage(char *topic, uint8_t *payload, size_t len)
 
   rlog_w(tagPARAMS, "MQTT message from topic [ %s ] was not processed!", topic);
   ledSysOff(true);
+  OPTIONS_UNLOCK();
+}
+
+void paramsMqttSubscribes()
+{
+  rlog_i(tagPARAMS, "Subscribing to parameter topics...");
+
+  OPTIONS_LOCK();
+
+  if (paramsList) {
+    // Recovering subscriptions to topics for which there was no subscription earlier
+    paramsEntryHandle_t item;
+    STAILQ_FOREACH(item, paramsList, next) {
+      if (item->topic == NULL) {
+        paramsMqttSubscribeEntry(item);
+        vTaskDelay(CONFIG_MQTT_SUBSCRIBE_INTERVAL / portTICK_RATE_MS);
+      };
+    };
+  };
+
+  OPTIONS_UNLOCK();
+}
+
+void paramsMqttResetSubscribes()
+{
+  rlog_i(tagPARAMS, "Resetting parameter topics...");
+
+  OPTIONS_LOCK();
+
+  if (paramsList) {
+    // Delete all topics from the heap
+    paramsEntryHandle_t item;
+    STAILQ_FOREACH(item, paramsList, next) {
+      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+      free(item->confirm);
+      item->confirm = NULL;
+      #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+      free(item->topic);
+      item->topic = NULL;
+    };
+  };
+
   OPTIONS_UNLOCK();
 }
 
