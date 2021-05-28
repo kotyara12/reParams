@@ -26,6 +26,7 @@ void paramsRegValue(const param_kind_t type_param, const param_type_t type_value
   const char* name_group, const char* name_key, const char* name_friendly, const int qos, 
   void * value);
 
+// MQTT
 void paramsMqttSubscribes();
 void paramsMqttResetSubscribes();
 void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len);
