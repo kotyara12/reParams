@@ -1,12 +1,11 @@
-#include <string.h>
 #include "reParams.h"
+#include <string.h>
 #include "rStrings.h"
 #include "rLog.h"
 #include "reEsp32.h"
 #include "reNvs.h"
 #include "reMqtt.h"
 #include "reLedSys.h"
-#include "project_config.h"
 #include "sys/queue.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -39,13 +38,26 @@ typedef struct paramsEntry_t *paramsEntryHandle_t;
 STAILQ_HEAD(paramsHead_t, paramsEntry_t);
 typedef struct paramsHead_t *paramsHeadHandle_t;
 
-static paramsHeadHandle_t paramsList = NULL;
-static SemaphoreHandle_t paramsLock = NULL;
+static paramsHeadHandle_t paramsList = nullptr;
+static SemaphoreHandle_t paramsLock = nullptr;
 
 #define OPTIONS_LOCK() do {} while (xSemaphoreTake(paramsLock, portMAX_DELAY) != pdPASS)
 #define OPTIONS_UNLOCK() xSemaphoreGive(paramsLock)
 
 static const char* tagPARAMS = "PARAMS";
+
+#if CONFIG_MQTT_PARAMS_WILDCARD
+  char* _paramsTopic = nullptr;
+#endif // CONFIG_MQTT_PARAMS_WILDCARD
+
+#if CONFIG_SILENT_MODE_ENABLE
+
+static uint32_t tsSilentMode = CONFIG_SILENT_MODE_INTERVAL;
+static bool stateSilentMode = false;
+silent_mode_change_callback_t cbSilentMode = nullptr;
+static const char* tagSM = "SILENT MODE";
+
+#endif // CONFIG_SILENT_MODE_ENABLE
 
 // -----------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------- Common functions ----------------------------------------------------
@@ -76,22 +88,20 @@ bool paramsInit()
   #if CONFIG_MQTT_OTA_ENABLE
   paramsRegValue(OPT_KIND_OTA, OPT_TYPE_STRING, nullptr,
     CONFIG_MQTT_SYSTEM_TOPIC, CONFIG_MQTT_OTA_TOPIC, CONFIG_MQTT_OTA_NAME, 
-    CONFIG_MQTT_OTA_QOS, NULL);
+    CONFIG_MQTT_OTA_QOS, nullptr);
   #endif // CONFIG_MQTT_OTA_ENABLE
 
   #if CONFIG_MQTT_COMMAND_ENABLE
   paramsRegValue(OPT_KIND_COMMAND, OPT_TYPE_STRING, nullptr,
     CONFIG_MQTT_SYSTEM_TOPIC, CONFIG_MQTT_COMMAND_TOPIC, CONFIG_MQTT_COMMAND_NAME, 
-    CONFIG_MQTT_COMMAND_QOS, NULL);
+    CONFIG_MQTT_COMMAND_QOS, nullptr);
   #endif // CONFIG_MQTT_COMMAND_ENABLE
 
-  /*
   #if CONFIG_SILENT_MODE_ENABLE  
   paramsRegValue(OPT_KIND_PARAMETER, OPT_TYPE_TIMESPAN, nullptr,
     CONFIG_MQTT_COMMON_TOPIC, CONFIG_SILENT_MODE_TOPIC, CONFIG_SILENT_MODE_NAME,
     CONFIG_MQTT_PARAMS_QOS, (void*)&tsSilentMode);
   #endif // CONFIG_SILENT_MODE_ENABLE
-  */
 
   return true;
 }
@@ -118,43 +128,84 @@ void paramsFree()
   vSemaphoreDelete(paramsLock);
 }
 
+#if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+
+void paramsMqttPublishConfirm(paramsEntryHandle_t entry)
+{
+  if (entry->type_param == OPT_KIND_PARAMETER) {
+    if (entry->value) {
+      // Generating a topic for a publication
+      if (!entry->confirm) {
+        entry->confirm = mqttGetTopic(CONFIG_MQTT_CONFIRM_TOPIC, entry->group, entry->key);
+      };
+      // Publish the current values
+      if (entry->confirm) {
+        mqttPublish(entry->confirm, 
+          value2string(entry->type_value, entry->value), 
+          CONFIG_MQTT_CONFIRM_QOS, CONFIG_MQTT_CONFIRM_RETAINED, 
+          true, false, true);
+      } else {
+        rlog_e(tagPARAMS, "Failed to generate confirmation topic!");
+      };
+    } else {
+      rlog_w(tagPARAMS, "Call publication parameter of undetermined value!");
+    };
+  };
+}
+
+#endif  // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+
+bool paramsMqttSubscribeTry(char * topic, const uint8_t qos)
+{
+  if (topic) {
+    rlog_d(tagPARAMS, "Try subscribe to topic: %s", topic);
+    if (mqttSubscribe(topic, qos)) {
+      return true;
+    } else {
+      rlog_w(tagPARAMS, "Failed subscribe to topic [ %s ]!", topic);
+      free(topic);
+    };
+  } else {
+    rlog_e(tagPARAMS, "Failed subscribe to topic: topic is null!");
+  };
+  return false;
+}
+
 void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
 {
   // Generating a topic for a subscription
   char * _topic = nullptr;
-  #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-  char * _confirm = nullptr;
-  #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
   if (entry->type_param == OPT_KIND_PARAMETER) {
     _topic = mqttGetTopic(CONFIG_MQTT_PARAMS_TOPIC, entry->group, entry->key);
-    #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-    _confirm = mqttGetTopic(CONFIG_MQTT_CONFIRM_TOPIC, entry->group, entry->key);
-    #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
   } else {
     _topic = mqttGetTopic(entry->group, entry->key, nullptr);
   };
   if (_topic) {
-    rlog_d(tagPARAMS, "Try subscribe to topic: %s", _topic);
-    // Trying to subscribe
-    if (mqttSubscribe(_topic, entry->qos)) {
-      // We succeeded in subscribing, we save the topic to identify incoming messages
-      entry->topic = _topic;
-      // If confirmation is enabled, publish the current values
-      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-      entry->confirm = _confirm;
-      if (entry->confirm) {
-        char* str_value = value2string(entry->type_value, entry->value);
-        mqttPublish(entry->confirm, str_value, CONFIG_MQTT_CONFIRM_QOS, CONFIG_MQTT_CONFIRM_RETAINED, true, false, false);
-        if (str_value) free(str_value);
+    #if CONFIG_MQTT_PARAMS_WILDCARD
+      // Subscription using # is valid for parameters only
+      if (entry->type_param == OPT_KIND_PARAMETER) {
+        // Subscribe once
+        if (!_paramsTopic) {
+          char * _paramsTemp = mqttGetTopic(CONFIG_MQTT_PARAMS_TOPIC, "#", nullptr);
+          if (paramsMqttSubscribeTry(_paramsTemp, CONFIG_MQTT_PARAMS_QOS)) {
+            _paramsTopic = _paramsTemp;
+            entry->topic = _topic;
+          };
+        } else {
+          entry->topic = _topic;
+        };
+      } else {
+        // We subscribe to management topics separately
+        if (paramsMqttSubscribeTry(_topic, entry->qos)) {
+          entry->topic = _topic;
+        };
       };
-      #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-    } else {
-      // Subscribe failed, delete the topic from heap (it will be generated after reconnecting to the server)
-      free(_topic);
-      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-      if (_confirm) free(_confirm);
-      #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-    };
+    #else
+      // We succeeded in subscribing, we save the topic to identify incoming messages
+      if (paramsMqttSubscribeTry(_topic, entry->qos)) {
+        entry->topic = _topic;
+      };
+    #endif // CONFIG_MQTT_PARAMS_WILDCARD
   };
 }
 
@@ -176,9 +227,9 @@ void paramsRegValue(const param_kind_t type_param, const param_type_t type_value
     item->friendly = name_friendly;
     item->group = name_group;
     item->key = name_key;
-    item->topic = NULL;
+    item->topic = nullptr;
     #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-    item->confirm = NULL;
+    item->confirm = nullptr;
     #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
     item->qos = qos;
     item->value = value;
@@ -196,6 +247,12 @@ void paramsRegValue(const param_kind_t type_param, const param_type_t type_value
         rlog_d(tagPARAMS, "Parameter \"%s\": [%s] registered", item->key, str_value);
       };
       free(str_value);
+      // We send the current value to the confirmation topic
+      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+      if (mqttIsConnected()) {
+        paramsMqttPublishConfirm(item);
+      };
+      #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
     } else {
       rlog_d(tagPARAMS, "System handler \"%s\" registered", item->key);
     };
@@ -309,6 +366,10 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
     // If the new value is different from what is already written in the variable...
     if (equal2value(entry->type_value, entry->value, new_value)) {
       rlog_i(tagPARAMS, "Received value does not differ from existing one, ignored");
+      // We send the current value to the confirmation topic
+      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+      paramsMqttPublishConfirm(entry);
+      #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       // We send a notification to telegram
       #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
       tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_EQUAL, 
@@ -324,12 +385,9 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
       xTaskResumeAll();
       // We save the resulting value in the storage
       nvsWrite(entry->group, entry->key, entry->type_value, entry->value);
+      // We send the current value to the confirmation topic
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-      char* str_value = value2string(entry->type_value, entry->value);
-      if (entry->confirm) {
-        mqttPublish(entry->confirm, str_value, CONFIG_MQTT_CONFIRM_QOS, CONFIG_MQTT_CONFIRM_RETAINED, true, false, false);
-      };
-      if (str_value) free(str_value);
+      paramsMqttPublishConfirm(entry);
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       // We send a notification to telegram
       #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
@@ -349,6 +407,10 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
   };
   if (new_value) free(new_value);
 }
+
+// -----------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------- MQTT --------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
 
 void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
 {
@@ -388,7 +450,7 @@ void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
   OPTIONS_UNLOCK();
 }
 
-void paramsMqttSubscribes()
+void paramsMqttSubscribing()
 {
   rlog_i(tagPARAMS, "Subscribing to parameter topics...");
 
@@ -398,7 +460,7 @@ void paramsMqttSubscribes()
     // Recovering subscriptions to topics for which there was no subscription earlier
     paramsEntryHandle_t item;
     STAILQ_FOREACH(item, paramsList, next) {
-      if (item->topic == NULL) {
+      if (item->topic == nullptr) {
         paramsMqttSubscribeEntry(item);
         vTaskDelay(CONFIG_MQTT_SUBSCRIBE_INTERVAL / portTICK_RATE_MS);
       };
@@ -408,11 +470,53 @@ void paramsMqttSubscribes()
   OPTIONS_UNLOCK();
 }
 
-void paramsMqttResetSubscribes()
+#if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+
+void paramsMqttConfirmations()
+{
+  rlog_i(tagPARAMS, "Publication of current settings...");
+
+  OPTIONS_LOCK();
+
+  if (paramsList) {
+    paramsEntryHandle_t item;
+    STAILQ_FOREACH(item, paramsList, next) {
+      if ((item->type_param == OPT_KIND_PARAMETER) && (item->confirm == nullptr)) {
+        paramsMqttPublishConfirm(item);
+        vTaskDelay(0);
+      };
+    };
+  };
+
+  OPTIONS_UNLOCK();
+}
+
+#endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+
+void paramsMqttSubscribesOpen()
+{
+  if (mqttIsConnected()) {
+    #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+    paramsMqttConfirmations();
+    #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+
+    paramsMqttSubscribing();
+  };
+}
+
+void paramsMqttSubscribesClose()
 {
   rlog_i(tagPARAMS, "Resetting parameter topics...");
 
   OPTIONS_LOCK();
+
+  // Free global params topic
+  #if CONFIG_MQTT_PARAMS_WILDCARD
+    if (_paramsTopic) {
+      free(_paramsTopic);
+      _paramsTopic = nullptr;
+    };
+  #endif // CONFIG_MQTT_PARAMS_WILDCARD
 
   if (paramsList) {
     // Delete all topics from the heap
@@ -420,13 +524,63 @@ void paramsMqttResetSubscribes()
     STAILQ_FOREACH(item, paramsList, next) {
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       free(item->confirm);
-      item->confirm = NULL;
+      item->confirm = nullptr;
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       free(item->topic);
-      item->topic = NULL;
+      item->topic = nullptr;
     };
   };
 
   OPTIONS_UNLOCK();
 }
+
+// -----------------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------- Silent mode -----------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+#if CONFIG_SILENT_MODE_ENABLE
+
+bool isSilentMode()
+{
+  return stateSilentMode;
+}
+
+void silentModeSetCallback(silent_mode_change_callback_t cb)
+{
+  cbSilentMode = cb;
+}
+
+void silentModeCheck(const struct tm timeinfo)
+{
+  if (tsSilentMode > 0) {
+    uint16_t t1 = tsSilentMode / 10000;
+    uint16_t t2 = tsSilentMode % 10000;
+    int16_t  t0 = timeinfo.tm_hour * 100 + timeinfo.tm_min;
+    bool newSilentMode = (t1 < t2) ? ((t0 >= t1) && (t0 < t2)) : !((t0 >= t2) && (t1 > t0));
+    // If the regime has changed
+    if (stateSilentMode != newSilentMode) {
+      stateSilentMode = newSilentMode;
+      // Switching the system LED (take care of the rest yourself)  
+      ledSysSetEnabled(!stateSilentMode);
+      // Calling the callback function
+      if (cbSilentMode) {
+        cbSilentMode(stateSilentMode);
+      };
+      // Sending alerts
+      if (stateSilentMode) {
+        rlog_i(tagSM, "Silent mode activated");
+        #if CONFIG_SILENT_MODE_TG_NOTIFY
+        tgSend(CONFIG_SILENT_MODE_TG_MSG_NOTIFY, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_SILENT_MODE_ON);
+        #endif // CONFIG_SILENT_MODE_TG_NOTIFY
+      } else {
+        rlog_i(tagSM, "Silent mode disabled");
+        #if CONFIG_SILENT_MODE_TG_NOTIFY
+        tgSend(CONFIG_SILENT_MODE_TG_MSG_NOTIFY, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_SILENT_MODE_OFF);
+        #endif // CONFIG_SILENT_MODE_TG_NOTIFY
+      };
+    };
+  };
+}
+
+#endif // CONFIG_SILENT_MODE_ENABLE
 

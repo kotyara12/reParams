@@ -12,9 +12,15 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
+#include "project_config.h"
 #include "rTypes.h"
 
 typedef void (*param_change_callback_t) (); 
+
+#if CONFIG_SILENT_MODE_ENABLE
+typedef void (*silent_mode_change_callback_t) (const bool silent_mode);
+#endif // CONFIG_SILENT_MODE_ENABLE
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,9 +33,17 @@ void paramsRegValue(const param_kind_t type_param, const param_type_t type_value
   void * value);
 
 // MQTT
-void paramsMqttSubscribes();
-void paramsMqttResetSubscribes();
+void paramsMqttSubscribesOpen();
+void paramsMqttSubscribesClose();
 void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len);
+
+// Silent mode
+#if CONFIG_SILENT_MODE_ENABLE
+bool isSilentMode();
+void silentModeSetCallback(silent_mode_change_callback_t cb);
+void silentModeCheck(const struct tm timeinfo);
+#endif // CONFIG_SILENT_MODE_ENABLE
+
 
 #ifdef __cplusplus
 }
