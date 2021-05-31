@@ -83,14 +83,14 @@ bool paramsInit()
   };
   
   #if CONFIG_MQTT_OTA_ENABLE
-  paramsRegisterValue(OPT_KIND_OTA, OPT_TYPE_STRING, nullptr,
-    CONFIG_MQTT_SYSTEM_TOPIC, CONFIG_MQTT_OTA_TOPIC, CONFIG_MQTT_OTA_NAME, 
+  paramsRegisterValue(OPT_KIND_OTA, OPT_TYPE_STRING, nullptr, nullptr,
+    CONFIG_MQTT_OTA_TOPIC, CONFIG_MQTT_OTA_NAME, 
     CONFIG_MQTT_OTA_QOS, nullptr);
   #endif // CONFIG_MQTT_OTA_ENABLE
 
   #if CONFIG_MQTT_COMMAND_ENABLE
-  paramsRegisterValue(OPT_KIND_COMMAND, OPT_TYPE_STRING, nullptr,
-    CONFIG_MQTT_SYSTEM_TOPIC, CONFIG_MQTT_COMMAND_TOPIC, CONFIG_MQTT_COMMAND_NAME, 
+  paramsRegisterValue(OPT_KIND_COMMAND, OPT_TYPE_STRING, nullptr, nullptr,
+    CONFIG_MQTT_COMMAND_TOPIC, CONFIG_MQTT_COMMAND_NAME, 
     CONFIG_MQTT_COMMAND_QOS, nullptr);
   #endif // CONFIG_MQTT_COMMAND_ENABLE
 
@@ -142,11 +142,11 @@ void paramsFree()
 
 void paramsMqttPublishConfirm(paramsEntryHandle_t entry)
 {
-  if (entry->type_param == OPT_KIND_PARAMETER) {
+  if ((entry->group) && (entry->type_param == OPT_KIND_PARAMETER)) {
     if (entry->value) {
       // Generating a topic for a publication
       if (!entry->confirm) {
-        entry->confirm = mqttGetTopic(CONFIG_MQTT_CONFIRM_TOPIC, entry->group->group, entry->key);
+        entry->confirm = mqttGetTopic(CONFIG_MQTT_CONFIRM_TOPIC, entry->group->topic, entry->key);
       };
       // Publish the current values
       if (entry->confirm) {
@@ -162,6 +162,7 @@ void paramsMqttPublishConfirm(paramsEntryHandle_t entry)
     };
   };
 }
+
 
 #endif  // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
 
@@ -185,10 +186,10 @@ void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
 {
   // Generating a topic for a subscription
   char * _topic = nullptr;
-  if (entry->type_param == OPT_KIND_PARAMETER) {
-    _topic = mqttGetTopic(CONFIG_MQTT_PARAMS_TOPIC, entry->group->group, entry->key);
+  if ((entry->group) && (entry->type_param == OPT_KIND_PARAMETER)) {
+    _topic = mqttGetTopic(CONFIG_MQTT_PARAMS_TOPIC, entry->group->topic, entry->key);
   } else {
-    _topic = mqttGetTopic(entry->group, entry->key, nullptr);
+    _topic = mqttGetTopic(CONFIG_MQTT_SYSTEM_TOPIC, entry->key, nullptr);
   };
   if (_topic) {
     #if CONFIG_MQTT_PARAMS_WILDCARD
@@ -223,7 +224,7 @@ void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
 // ------------------------------------------------- Register parameters -------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
 
-paramsGroupHandle_t paramsRegisterGroup(const paramsGroup_t* parent_group, const char* name_group, const char* name_friendly)
+paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_group, const char* name_friendly)
 {
   paramsGroupHandle_t item = nullptr;
 
@@ -256,7 +257,7 @@ paramsGroupHandle_t paramsRegisterGroup(const paramsGroup_t* parent_group, const
 }
 
 paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
-  const paramsGroupHandle_t parent_group, 
+  paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value)
 {
@@ -289,6 +290,7 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       if ((item->group) && (item->group->group)) {
         nvsRead(item->group->group, item->key, item->type_value, item->value);
       };
+
       if (item->on_change) item->on_change();
 
       char* str_value = value2string(item->type_value, item->value);
@@ -452,7 +454,9 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
       // Restoring the scheduler
       xTaskResumeAll();
       // We save the resulting value in the storage
-      nvsWrite(entry->group, entry->key, entry->type_value, entry->value);
+      if ((entry->group) && (entry->group->group)) {
+        nvsWrite(entry->group->group, entry->key, entry->type_value, entry->value);
+      };
       // We send the current value to the confirmation topic
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       paramsMqttPublishConfirm(entry);

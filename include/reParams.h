@@ -55,9 +55,9 @@ extern "C" {
 
 bool paramsInit();
 void paramsFree();
-paramsGroupHandle_t paramsRegisterGroup(const paramsGroup_t* parent_group, const char* name_group, const char* name_friendly);
+paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_group, const char* name_friendly);
 paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
-  const paramsGroupHandle_t parent_group, 
+  paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
 paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
