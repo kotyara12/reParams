@@ -146,7 +146,7 @@ void paramsMqttPublishConfirm(paramsEntryHandle_t entry)
     if (entry->value) {
       // Generating a topic for a publication
       if (!entry->confirm) {
-        entry->confirm = mqttGetTopic(CONFIG_MQTT_CONFIRM_TOPIC, entry->group, entry->key);
+        entry->confirm = mqttGetTopic(CONFIG_MQTT_CONFIRM_TOPIC, entry->group->group, entry->key);
       };
       // Publish the current values
       if (entry->confirm) {
@@ -186,7 +186,7 @@ void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
   // Generating a topic for a subscription
   char * _topic = nullptr;
   if (entry->type_param == OPT_KIND_PARAMETER) {
-    _topic = mqttGetTopic(CONFIG_MQTT_PARAMS_TOPIC, entry->group, entry->key);
+    _topic = mqttGetTopic(CONFIG_MQTT_PARAMS_TOPIC, entry->group->group, entry->key);
   } else {
     _topic = mqttGetTopic(entry->group, entry->key, nullptr);
   };
@@ -328,7 +328,7 @@ paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, con
     return paramsRegisterValue(type_param, type_value, callback_change, _pgCommon, name_key, name_friendly, qos, value);
   };
 
-  retutn nullptr;
+  return nullptr;
 }
 
 // -----------------------------------------------------------------------------------------------------------------------
