@@ -13,10 +13,37 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
+#include "sys/queue.h"
 #include "project_config.h"
 #include "rTypes.h"
 
 typedef void (*param_change_callback_t) (); 
+
+typedef struct paramsGroup_t {
+  paramsGroup_t *parent;
+  const char* friendly;
+  char *group;
+  char *topic;
+  STAILQ_ENTRY(paramsGroup_t) next;
+} paramsGroup_t;
+typedef struct paramsGroup_t *paramsGroupHandle_t;
+
+typedef struct paramsEntry_t {
+  param_kind_t type_param;
+  param_type_t type_value;
+  param_change_callback_t on_change;
+  paramsGroup_t *group;
+  const char* friendly;
+  const char* key;
+  void *value;
+  char *topic;
+  #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+  char *confirm;
+  #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+  int qos;
+  STAILQ_ENTRY(paramsEntry_t) next;
+} paramsEntry_t;
+typedef struct paramsEntry_t *paramsEntryHandle_t;
 
 #if CONFIG_SILENT_MODE_ENABLE
 typedef void (*silent_mode_change_callback_t) (const bool silent_mode);
@@ -28,8 +55,13 @@ extern "C" {
 
 bool paramsInit();
 void paramsFree();
-void paramsRegValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
-  const char* name_group, const char* name_key, const char* name_friendly, const int qos, 
+paramsGroupHandle_t paramsRegisterGroup(const paramsGroup_t* parent_group, const char* name_group, const char* name_friendly);
+paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+  const paramsGroupHandle_t parent_group, 
+  const char* name_key, const char* name_friendly, const int qos, 
+  void * value);
+paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+  const char* name_key, const char* name_friendly, const int qos, 
   void * value);
 
 // MQTT

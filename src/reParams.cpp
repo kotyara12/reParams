@@ -6,7 +6,6 @@
 #include "reNvs.h"
 #include "reMqtt.h"
 #include "reLedSys.h"
-#include "sys/queue.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #if CONFIG_MQTT_OTA_ENABLE
@@ -18,27 +17,13 @@
 #include "reTgSend.h"
 #endif // CONFIG_TELEGRAM_ENABLE
 
-typedef struct paramsEntry_t {
-  param_kind_t type_param;
-  param_type_t type_value;
-  param_change_callback_t on_change;
-  const char* friendly;
-  const char* group;
-  const char* key;
-  void *value;
-  char *topic;
-  #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-  char *confirm;
-  #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-  int qos;
-  STAILQ_ENTRY(paramsEntry_t) next;
-} paramsEntry_t;
-typedef struct paramsEntry_t *paramsEntryHandle_t;
+STAILQ_HEAD(paramsGroupHead_t, paramsGroup_t);
+STAILQ_HEAD(paramsEntryHead_t, paramsEntry_t);
+typedef struct paramsEntryHead_t *paramsEntryHeadHandle_t;
+typedef struct paramsGroupHead_t *paramsGroupHeadHandle_t;
 
-STAILQ_HEAD(paramsHead_t, paramsEntry_t);
-typedef struct paramsHead_t *paramsHeadHandle_t;
-
-static paramsHeadHandle_t paramsList = nullptr;
+static paramsGroupHeadHandle_t paramsGroups = nullptr;
+static paramsEntryHeadHandle_t paramsList = nullptr;
 static SemaphoreHandle_t paramsLock = nullptr;
 
 #define OPTIONS_LOCK() do {} while (xSemaphoreTake(paramsLock, portMAX_DELAY) != pdPASS)
@@ -49,6 +34,8 @@ static const char* tagPARAMS = "PARAMS";
 #if CONFIG_MQTT_PARAMS_WILDCARD
   char* _paramsTopic = nullptr;
 #endif // CONFIG_MQTT_PARAMS_WILDCARD
+
+paramsGroupHandle_t _pgCommon = nullptr;
 
 #if CONFIG_SILENT_MODE_ENABLE
 
@@ -74,7 +61,17 @@ bool paramsInit()
       return false;
     };
 
-    paramsList = new paramsHead_t;
+    paramsGroups = new paramsGroupHead_t;
+    if (paramsGroups) {
+      STAILQ_INIT(paramsGroups);
+    }
+    else {
+      vSemaphoreDelete(paramsLock);
+      rlog_e(tagPARAMS, "Parameters manager initialization error!");
+      return false;
+    }
+
+    paramsList = new paramsEntryHead_t;
     if (paramsList) {
       STAILQ_INIT(paramsList);
     }
@@ -82,25 +79,25 @@ bool paramsInit()
       vSemaphoreDelete(paramsLock);
       rlog_e(tagPARAMS, "Parameters manager initialization error!");
       return false;
-    }
+    };
   };
   
   #if CONFIG_MQTT_OTA_ENABLE
-  paramsRegValue(OPT_KIND_OTA, OPT_TYPE_STRING, nullptr,
+  paramsRegisterValue(OPT_KIND_OTA, OPT_TYPE_STRING, nullptr,
     CONFIG_MQTT_SYSTEM_TOPIC, CONFIG_MQTT_OTA_TOPIC, CONFIG_MQTT_OTA_NAME, 
     CONFIG_MQTT_OTA_QOS, nullptr);
   #endif // CONFIG_MQTT_OTA_ENABLE
 
   #if CONFIG_MQTT_COMMAND_ENABLE
-  paramsRegValue(OPT_KIND_COMMAND, OPT_TYPE_STRING, nullptr,
+  paramsRegisterValue(OPT_KIND_COMMAND, OPT_TYPE_STRING, nullptr,
     CONFIG_MQTT_SYSTEM_TOPIC, CONFIG_MQTT_COMMAND_TOPIC, CONFIG_MQTT_COMMAND_NAME, 
     CONFIG_MQTT_COMMAND_QOS, nullptr);
   #endif // CONFIG_MQTT_COMMAND_ENABLE
 
   #if CONFIG_SILENT_MODE_ENABLE  
-  paramsRegValue(OPT_KIND_PARAMETER, OPT_TYPE_TIMESPAN, nullptr,
-    CONFIG_MQTT_COMMON_TOPIC, CONFIG_SILENT_MODE_TOPIC, CONFIG_SILENT_MODE_NAME,
-    CONFIG_MQTT_PARAMS_QOS, (void*)&tsSilentMode);
+    paramsRegisterCommonValue(OPT_KIND_PARAMETER, OPT_TYPE_TIMESPAN, nullptr,
+      CONFIG_SILENT_MODE_TOPIC, CONFIG_SILENT_MODE_NAME,
+      CONFIG_MQTT_PARAMS_QOS, (void*)&tsSilentMode);
   #endif // CONFIG_SILENT_MODE_ENABLE
 
   return true;
@@ -111,16 +108,29 @@ void paramsFree()
   OPTIONS_LOCK();
 
   if (paramsList) {
-    paramsEntryHandle_t item, tmp;
-    STAILQ_FOREACH_SAFE(item, paramsList, next, tmp) {
-      STAILQ_REMOVE(paramsList, item, paramsEntry_t, next);
-      if (item->topic) {
-        mqttUnsubscribe(item->topic);
-        free(item->topic);
+    paramsEntryHandle_t itemL, tmpL;
+    STAILQ_FOREACH_SAFE(itemL, paramsList, next, tmpL) {
+      STAILQ_REMOVE(paramsList, itemL, paramsEntry_t, next);
+      if (itemL->topic) {
+        mqttUnsubscribe(itemL->topic);
+        free(itemL->topic);
       };
-      delete item;
+      delete itemL;
     };
     delete paramsList;
+  };
+
+  if (paramsGroups) {
+    paramsGroupHandle_t itemG, tmpG;
+    STAILQ_FOREACH_SAFE(itemG, paramsGroups, next, tmpG) {
+      STAILQ_REMOVE(paramsGroups, itemG, paramsGroup_t, next);
+      if (itemG->parent) {
+        if (itemG->group) free(itemG->group);
+        if (itemG->topic) free(itemG->topic);
+      };
+      delete itemG;
+    };
+    delete paramsGroups;
   };
 
   OPTIONS_UNLOCK();
@@ -209,10 +219,49 @@ void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
   };
 }
 
-void paramsRegValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
-  const char* name_group, const char* name_key, const char* name_friendly, const int qos, 
+// -----------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------- Register parameters -------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+paramsGroupHandle_t paramsRegisterGroup(const paramsGroup_t* parent_group, const char* name_group, const char* name_friendly)
+{
+  paramsGroupHandle_t item = nullptr;
+
+  if (!paramsGroups) {
+    paramsInit();
+  };
+
+  OPTIONS_LOCK();
+
+  if (paramsGroups) {
+    item = new paramsGroup_t;
+    item->parent = parent_group;
+    item->friendly = name_friendly;
+    if (item->parent) {
+      item->group = malloc_stringf("%s.%s", item->parent->group, name_group);
+      item->topic = mqttGetSubTopic(item->parent->topic, name_group);
+    } else {
+      item->group = (char*)name_group;
+      item->topic = (char*)name_group;
+    };
+    if (strlen(item->group) > 15) {
+      rlog_e(tagPARAMS, "The group name [%s] is too long!", item->group);
+    };
+    STAILQ_INSERT_TAIL(paramsGroups, item, next);
+  };
+
+  OPTIONS_UNLOCK();
+
+  return item;
+}
+
+paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+  const paramsGroupHandle_t parent_group, 
+  const char* name_key, const char* name_friendly, const int qos, 
   void * value)
 {
+  paramsEntryHandle_t item = nullptr;
+
   if (!paramsList) {
     paramsInit();
   };
@@ -220,12 +269,12 @@ void paramsRegValue(const param_kind_t type_param, const param_type_t type_value
   OPTIONS_LOCK();
 
   if (paramsList) {
-    paramsEntryHandle_t item = new paramsEntry_t;
+    item = new paramsEntry_t;
     item->type_param = type_param;
     item->type_value = type_value;
     item->on_change = callback_change;
     item->friendly = name_friendly;
-    item->group = name_group;
+    item->group = parent_group;
     item->key = name_key;
     item->topic = nullptr;
     #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
@@ -237,12 +286,14 @@ void paramsRegValue(const param_kind_t type_param, const param_type_t type_value
     STAILQ_INSERT_TAIL(paramsList, item, next);
     // Read value from NVS storage
     if (item->type_param == OPT_KIND_PARAMETER) {
-      nvsRead(item->group, item->key, item->type_value, item->value);
+      if ((item->group) && (item->group->group)) {
+        nvsRead(item->group->group, item->key, item->type_value, item->value);
+      };
       if (item->on_change) item->on_change();
 
       char* str_value = value2string(item->type_value, item->value);
-      if (item->group) {
-        rlog_d(tagPARAMS, "Parameter \"%s.%s\": [%s] registered", item->group, item->key, str_value);
+      if ((item->group) && (item->group->group)) {
+        rlog_d(tagPARAMS, "Parameter \"%s.%s\": [%s] registered", item->group->group, item->key, str_value);
       } else {
         rlog_d(tagPARAMS, "Parameter \"%s\": [%s] registered", item->key, str_value);
       };
@@ -261,6 +312,23 @@ void paramsRegValue(const param_kind_t type_param, const param_type_t type_value
   };
   
   OPTIONS_UNLOCK();
+
+  return item;
+}
+
+paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+  const char* name_key, const char* name_friendly, const int qos, 
+  void * value)
+{
+  if (!_pgCommon) {
+    _pgCommon = paramsRegisterGroup(nullptr, CONFIG_MQTT_COMMON_TOPIC, CONFIG_MQTT_COMMON_FIENDLY);
+  };
+
+  if (_pgCommon) {
+    return paramsRegisterValue(type_param, type_value, callback_change, _pgCommon, name_key, name_friendly, qos, value);
+  };
+
+  retutn nullptr;
 }
 
 // -----------------------------------------------------------------------------------------------------------------------
