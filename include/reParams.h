@@ -17,13 +17,17 @@
 #include "project_config.h"
 #include "rTypes.h"
 
-typedef void (*param_change_callback_t) (); 
+class param_handler_t {
+  public:
+    virtual ~param_handler_t() {};
+    virtual void onChange() = 0;
+};
 
 typedef struct paramsGroup_t {
   paramsGroup_t *parent;
-  const char* friendly;
-  char *group;
+  char *key;
   char *topic;
+  char* friendly;
   STAILQ_ENTRY(paramsGroup_t) next;
 } paramsGroup_t;
 typedef struct paramsGroup_t *paramsGroupHandle_t;
@@ -31,7 +35,7 @@ typedef struct paramsGroup_t *paramsGroupHandle_t;
 typedef struct paramsEntry_t {
   param_kind_t type_param;
   param_type_t type_value;
-  param_change_callback_t on_change;
+  param_handler_t *handler;
   paramsGroup_t *group;
   const char* friendly;
   const char* key;
@@ -55,12 +59,12 @@ extern "C" {
 
 bool paramsInit();
 void paramsFree();
-paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_group, const char* name_friendly);
-paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_key, const char* name_topic, const char* name_friendly);
+paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
   paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
-paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
 

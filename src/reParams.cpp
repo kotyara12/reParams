@@ -125,8 +125,9 @@ void paramsFree()
     STAILQ_FOREACH_SAFE(itemG, paramsGroups, next, tmpG) {
       STAILQ_REMOVE(paramsGroups, itemG, paramsGroup_t, next);
       if (itemG->parent) {
-        if (itemG->group) free(itemG->group);
+        if (itemG->key) free(itemG->key);
         if (itemG->topic) free(itemG->topic);
+        if (itemG->friendly) free(itemG->friendly);
       };
       delete itemG;
     };
@@ -224,7 +225,7 @@ void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
 // ------------------------------------------------- Register parameters -------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
 
-paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_group, const char* name_friendly)
+paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_key, const char* name_topic, const char* name_friendly)
 {
   paramsGroupHandle_t item = nullptr;
 
@@ -237,16 +238,17 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
   if (paramsGroups) {
     item = new paramsGroup_t;
     item->parent = parent_group;
-    item->friendly = name_friendly;
     if (item->parent) {
-      item->group = malloc_stringf("%s.%s", item->parent->group, name_group);
-      item->topic = mqttGetSubTopic(item->parent->topic, name_group);
+      item->key = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_GROUP_DELIMITER, item->parent->key, name_key);
+      item->friendly = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_FIENDLY_DELIMITER, item->parent->friendly, name_friendly);
+      item->topic = mqttGetSubTopic(item->parent->topic, name_topic);
     } else {
-      item->group = (char*)name_group;
-      item->topic = (char*)name_group;
+      item->key = (char*)name_key;
+      item->friendly = (char*)name_friendly;
+      item->topic = (char*)name_topic;
     };
-    if (strlen(item->group) > 15) {
-      rlog_e(tagPARAMS, "The group name [%s] is too long!", item->group);
+    if (strlen(item->key) > 15) {
+      rlog_e(tagPARAMS, "The group key name [%s] is too long!", item->key);
     };
     STAILQ_INSERT_TAIL(paramsGroups, item, next);
   };
@@ -256,7 +258,7 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
   return item;
 }
 
-paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
   paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value)
@@ -273,7 +275,7 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
     item = new paramsEntry_t;
     item->type_param = type_param;
     item->type_value = type_value;
-    item->on_change = callback_change;
+    item->handler = change_handler;
     item->friendly = name_friendly;
     item->group = parent_group;
     item->key = name_key;
@@ -287,15 +289,15 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
     STAILQ_INSERT_TAIL(paramsList, item, next);
     // Read value from NVS storage
     if (item->type_param == OPT_KIND_PARAMETER) {
-      if ((item->group) && (item->group->group)) {
-        nvsRead(item->group->group, item->key, item->type_value, item->value);
+      if ((item->group) && (item->group->key)) {
+        nvsRead(item->group->key, item->key, item->type_value, item->value);
       };
 
-      if (item->on_change) item->on_change();
+      if (item->handler) item->handler->onChange();
 
       char* str_value = value2string(item->type_value, item->value);
-      if ((item->group) && (item->group->group)) {
-        rlog_d(tagPARAMS, "Parameter \"%s.%s\": [%s] registered", item->group->group, item->key, str_value);
+      if ((item->group) && (item->group->key)) {
+        rlog_d(tagPARAMS, "Parameter \"%s.%s\": [%s] registered", item->group->key, item->key, str_value);
       } else {
         rlog_d(tagPARAMS, "Parameter \"%s\": [%s] registered", item->key, str_value);
       };
@@ -318,16 +320,16 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
   return item;
 }
 
-paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_change_callback_t callback_change,
+paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value)
 {
   if (!_pgCommon) {
-    _pgCommon = paramsRegisterGroup(nullptr, CONFIG_MQTT_COMMON_TOPIC, CONFIG_MQTT_COMMON_FIENDLY);
+    _pgCommon = paramsRegisterGroup(nullptr, CONFIG_MQTT_COMMON_TOPIC, CONFIG_MQTT_COMMON_TOPIC, CONFIG_MQTT_COMMON_FIENDLY);
   };
 
   if (_pgCommon) {
-    return paramsRegisterValue(type_param, type_value, callback_change, _pgCommon, name_key, name_friendly, qos, value);
+    return paramsRegisterValue(type_param, type_value, change_handler, _pgCommon, name_key, name_friendly, qos, value);
   };
 
   return nullptr;
@@ -442,20 +444,25 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       // We send a notification to telegram
       #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
-      tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_EQUAL, 
-        entry->friendly, entry->group, entry->key);
+      if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
+        tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_EQUAL, 
+          entry->group->friendly, entry->friendly, entry->group->key, entry->key);
+      } else {
+        tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_EQUAL, 
+          "", entry->friendly, "", entry->key);
+      };
       #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
     } else {
       // We block context switching to other tasks to prevent reading the value while it is changing
       vTaskSuspendAll();
       // We write the new value to the variable
       setNewValue(entry->type_value, entry->value, new_value);
-      if (entry->on_change) entry->on_change();      
+      if (entry->handler) entry->handler->onChange();      
       // Restoring the scheduler
       xTaskResumeAll();
       // We save the resulting value in the storage
-      if ((entry->group) && (entry->group->group)) {
-        nvsWrite(entry->group->group, entry->key, entry->type_value, entry->value);
+      if ((entry->group) && (entry->group->key)) {
+        nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
       };
       // We send the current value to the confirmation topic
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
@@ -464,8 +471,13 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
       // We send a notification to telegram
       #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
       char* tg_value = value2string(entry->type_value, entry->value);
-      tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_CHANGE, 
-        entry->friendly, entry->group, entry->key, tg_value);
+      if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
+        tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_CHANGE, 
+          entry->group->friendly, entry->friendly, entry->group->key, entry->key, tg_value);
+      } else {
+        tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_CHANGE, 
+          "", entry->friendly, "", entry->key, tg_value);
+      };
       if (tg_value) free(tg_value);
       #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
     };
@@ -473,8 +485,13 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
     rlog_e(tagPARAMS, "Could not convert value [ %s ]!", (char*)payload);
     // We send a notification to telegram
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
-    tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_BAD, 
-      entry->friendly, entry->group, entry->key, (char*)payload);
+    if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
+      tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_BAD, 
+        entry->group->friendly, entry->friendly, entry->group->key, entry->key, (char*)payload);
+    } else {
+      tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_BAD, 
+        "", entry->friendly, "", entry->key, (char*)payload);
+    };
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
   };
   if (new_value) free(new_value);
@@ -518,6 +535,9 @@ void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
   };
 
   rlog_w(tagPARAMS, "MQTT message from topic [ %s ] was not processed!", topic);
+  #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+  tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, (char*)payload);
+  #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
   ledSysOff(true);
   OPTIONS_UNLOCK();
 }
