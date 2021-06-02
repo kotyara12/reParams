@@ -164,8 +164,15 @@ void paramsMqttPublishConfirm(paramsEntryHandle_t entry)
   };
 }
 
+#endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
 
-#endif  // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+void paramsMqttPublishValue(paramsEntryHandle_t entry)
+{
+  #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+  paramsMqttPublishConfirm(entry);
+  #else
+  #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+}
 
 bool paramsMqttSubscribeTry(char * topic, const uint8_t qos)
 {
