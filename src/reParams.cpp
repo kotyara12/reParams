@@ -428,7 +428,7 @@ void paramsExecCmd(char *topic, uint8_t *payload, size_t len)
 
 #endif // CONFIG_MQTT_COMMAND_ENABLE
 
-void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
+void paramsSetMqttValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
 {
   rlog_i(tagPARAMS, "Received parameter [ %s ] from topic \"%s\"", (char*)payload, entry->topic);
   
@@ -497,6 +497,37 @@ void paramsSetValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
   if (new_value) free(new_value);
 }
 
+void paramsApplyValue(paramsEntryHandle_t entry)
+{
+  OPTIONS_LOCK();
+  ledSysOn(true);
+  if (entry) {
+    if (entry->handler) entry->handler->onChange();      
+    // We save the resulting value in the storage
+    if ((entry->group) && (entry->group->key)) {
+      nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
+    };
+    // We send the current value to the confirmation topic
+    #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+    paramsMqttPublishConfirm(entry);
+    #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+    // We send a notification to telegram
+    #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+    char* tg_value = value2string(entry->type_value, entry->value);
+    if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
+      tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_CHANGE, 
+        entry->group->friendly, entry->friendly, entry->group->key, entry->key, tg_value);
+    } else {
+      tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_CHANGE, 
+        "", entry->friendly, "", entry->key, tg_value);
+    };
+    if (tg_value) free(tg_value);
+    #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+  };
+  ledSysOff(true);
+  OPTIONS_UNLOCK();
+}
+
 // -----------------------------------------------------------------------------------------------------------------------
 // --------------------------------------------------------- MQTT --------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
@@ -524,7 +555,7 @@ void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
             break;
 
           default:
-            paramsSetValue(item, payload, len);
+            paramsSetMqttValue(item, payload, len);
             break;
         };
         ledSysOff(true);

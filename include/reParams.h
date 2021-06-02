@@ -67,6 +67,7 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
 paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
+void paramsApplyValue(paramsEntryHandle_t entry);
 
 // MQTT
 void paramsMqttSubscribesOpen();
