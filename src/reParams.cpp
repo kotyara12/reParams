@@ -153,7 +153,7 @@ void paramsMqttPublishConfirm(paramsEntryHandle_t entry)
       if (entry->confirm) {
         mqttPublish(entry->confirm, 
           value2string(entry->type_value, entry->value), 
-          CONFIG_MQTT_CONFIRM_QOS, CONFIG_MQTT_CONFIRM_RETAINED, 
+          entry->qos, CONFIG_MQTT_CONFIRM_RETAINED, 
           true, false, true);
       } else {
         rlog_e(tagPARAMS, "Failed to generate confirmation topic!");
@@ -164,15 +164,34 @@ void paramsMqttPublishConfirm(paramsEntryHandle_t entry)
   };
 }
 
-#endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+#else
 
 void paramsMqttPublishValue(paramsEntryHandle_t entry)
 {
-  #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-  paramsMqttPublishConfirm(entry);
-  #else
-  #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+  if ((entry->group) && (entry->type_param == OPT_KIND_PARAMETER)) {
+    if (entry->value) {
+      // Generating a topic for a publication
+      if (!entry->topic) {
+        entry->topic = mqttGetTopic(CONFIG_MQTT_PARAMS_TOPIC, entry->group->topic, entry->key);
+      };
+      // Publish the current values
+      if (entry->topic) {
+        entry->locked = true;
+        mqttPublish(entry->topic, 
+          value2string(entry->type_value, entry->value), 
+          entry->qos, CONFIG_MQTT_PARAMS_RETAINED, 
+          true, false, true);
+      } else {
+        rlog_e(tagPARAMS, "Failed to generate parameter topic!");
+      };
+    } else {
+      // Unsubscribe from topic
+      rlog_w(tagPARAMS, "Call publication parameter of undetermined value!");
+    };
+  };
 }
+
+#endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
 
 bool paramsMqttSubscribeTry(char * topic, const uint8_t qos)
 {
@@ -225,6 +244,9 @@ void paramsMqttSubscribeEntry(paramsEntryHandle_t entry)
         entry->topic = _topic;
       };
     #endif // CONFIG_MQTT_PARAMS_WILDCARD
+    #if !CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+    entry->locked = false;
+    #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
   };
 }
 
@@ -289,6 +311,8 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
     item->topic = nullptr;
     #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
     item->confirm = nullptr;
+    #else
+    item->locked = false;
     #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
     item->qos = qos;
     item->value = value;
@@ -353,7 +377,7 @@ extern const char ota_pem_end[]   asm(CONFIG_MQTT_OTA_PEM_END);
 
 static const char* tagOTA = "OTA";
 
-void paramsStartOTA(char *topic, uint8_t *payload, size_t len)
+void paramsStartOTA(char *topic, uint8_t *payload)
 {
   if (strlen((char*)payload) > 0) {
     rlog_i(tagOTA, "OTA firmware upgrade received from \"%s\"", (char*)payload);
@@ -413,7 +437,7 @@ void paramsStartOTA(char *topic, uint8_t *payload, size_t len)
 
 #if CONFIG_MQTT_COMMAND_ENABLE
 
-void paramsExecCmd(char *topic, uint8_t *payload, size_t len)
+void paramsExecCmd(char *topic, uint8_t *payload)
 {
   rlog_i(tagPARAMS, "Command received: [ %s ]", (char*)payload);
   
@@ -435,7 +459,7 @@ void paramsExecCmd(char *topic, uint8_t *payload, size_t len)
 
 #endif // CONFIG_MQTT_COMMAND_ENABLE
 
-void paramsSetMqttValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
+void paramsSetParamValue(paramsEntryHandle_t entry, const bool publishMqtt, uint8_t *payload)
 {
   rlog_i(tagPARAMS, "Received parameter [ %s ] from topic \"%s\"", (char*)payload, entry->topic);
   
@@ -448,6 +472,8 @@ void paramsSetMqttValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
       // We send the current value to the confirmation topic
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       paramsMqttPublishConfirm(entry);
+      #else
+      if (publishMqtt) paramsMqttPublishValue(entry);
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       // We send a notification to telegram
       #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
@@ -474,6 +500,8 @@ void paramsSetMqttValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
       // We send the current value to the confirmation topic
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       paramsMqttPublishConfirm(entry);
+      #else
+      if (publish) paramsMqttPublishValue(entry);
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       // We send a notification to telegram
       #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
@@ -504,7 +532,7 @@ void paramsSetMqttValue(paramsEntryHandle_t entry, uint8_t *payload, size_t len)
   if (new_value) free(new_value);
 }
 
-void paramsApplyValue(paramsEntryHandle_t entry)
+void paramsValueApply(paramsEntryHandle_t entry)
 {
   OPTIONS_LOCK();
   ledSysOn(true);
@@ -517,6 +545,8 @@ void paramsApplyValue(paramsEntryHandle_t entry)
     // We send the current value to the confirmation topic
     #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
     paramsMqttPublishConfirm(entry);
+    #else
+    paramsMqttPublishValue(entry);
     #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
     // We send a notification to telegram
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
@@ -535,6 +565,11 @@ void paramsApplyValue(paramsEntryHandle_t entry)
   OPTIONS_UNLOCK();
 }
 
+void paramsValueSet(paramsEntryHandle_t entry, char* payload)
+{
+  paramsSetParamValue(entry, true, (uint8_t*)payload);
+}
+
 // -----------------------------------------------------------------------------------------------------------------------
 // --------------------------------------------------------- MQTT --------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
@@ -551,18 +586,26 @@ void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
         switch (item->type_param) {
           case OPT_KIND_OTA:
             #if CONFIG_MQTT_OTA_ENABLE
-            paramsStartOTA(topic, payload, len);
+            paramsStartOTA(topic, payload);
             #endif // CONFIG_MQTT_OTA_ENABLE
             break;
           
           case OPT_KIND_COMMAND:
             #if CONFIG_MQTT_COMMAND_ENABLE
-            paramsExecCmd(topic, payload, len);
+            paramsExecCmd(topic, payload);
             #endif // CONFIG_MQTT_COMMAND_ENABLE
             break;
 
           default:
-            paramsSetMqttValue(item, payload, len);
+            #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+            paramsSetParamValue(item, false, payload);
+            #else
+            if (entry->locked) {
+              entry->locked = false;
+            } else {
+              paramsSetParamValue(item, false, payload);
+            };
+            #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
             break;
         };
         ledSysOff(true);

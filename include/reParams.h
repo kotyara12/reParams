@@ -43,6 +43,8 @@ typedef struct paramsEntry_t {
   char *topic;
   #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
   char *confirm;
+  #else
+  bool locked = false;
   #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
   int qos;
   STAILQ_ENTRY(paramsEntry_t) next;
@@ -67,7 +69,8 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
 paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
-void paramsApplyValue(paramsEntryHandle_t entry);
+void paramsValueApply(paramsEntryHandle_t entry);
+void paramsValueSet(paramsEntryHandle_t entry, char* payload);
 
 // MQTT
 void paramsMqttSubscribesOpen();
