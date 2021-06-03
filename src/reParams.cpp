@@ -320,11 +320,16 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
     STAILQ_INSERT_TAIL(paramsList, item, next);
     // Read value from NVS storage
     if (item->type_param == OPT_KIND_PARAMETER) {
+      void* prev_value = clone2value(item->type_value, item->value);
       if ((item->group) && (item->group->key)) {
         nvsRead(item->group->key, item->key, item->type_value, item->value);
       };
-
-      if (item->handler) item->handler->onChange();
+      if (prev_value) {
+        if (!equal2value(item->type_value, prev_value, item->value)) {
+          if (item->handler) item->handler->onChange();
+        };
+        free(prev_value);
+      };
 
       char* str_value = value2string(item->type_value, item->value);
       if ((item->group) && (item->group->key)) {
@@ -532,12 +537,15 @@ void paramsSetParamValue(paramsEntryHandle_t entry, const bool publishMqtt, uint
   if (new_value) free(new_value);
 }
 
-void paramsValueApply(paramsEntryHandle_t entry)
+void paramsValueApply(paramsEntryHandle_t entry, const bool callHandler)
 {
   OPTIONS_LOCK();
   ledSysOn(true);
   if (entry) {
-    if (entry->handler) entry->handler->onChange();      
+    // Call change handler
+    if ((callHandler) && (entry->handler)) {
+      entry->handler->onChange();      
+    };
     // We save the resulting value in the storage
     if ((entry->group) && (entry->group->key)) {
       nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
