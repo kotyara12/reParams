@@ -75,7 +75,7 @@ void paramsValueSet(paramsEntryHandle_t entry, char* payload);
 // MQTT
 void paramsMqttSubscribesOpen();
 void paramsMqttSubscribesClose();
-void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len);
+void paramsMqttIncomingMessage(char *topic, char *payload, size_t len);
 
 // Silent mode
 #if CONFIG_SILENT_MODE_ENABLE

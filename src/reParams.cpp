@@ -382,12 +382,12 @@ extern const char ota_pem_end[]   asm(CONFIG_MQTT_OTA_PEM_END);
 
 static const char* tagOTA = "OTA";
 
-void paramsStartOTA(char *topic, uint8_t *payload)
+void paramsStartOTA(char *topic, char *payload)
 {
-  if (strlen((char*)payload) > 0) {
-    rlog_i(tagOTA, "OTA firmware upgrade received from \"%s\"", (char*)payload);
+  if (strlen(payload) > 0) {
+    rlog_i(tagOTA, "OTA firmware upgrade received from \"%s\"", payload);
     #if CONFIG_TELEGRAM_ENABLE
-    tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_OTA, (char*)payload);
+    tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_OTA, payload);
     #endif // CONFIG_TELEGRAM_ENABLE
 
     // Resetting the value
@@ -402,7 +402,7 @@ void paramsStartOTA(char *topic, uint8_t *payload)
     cfgOTA.use_global_ca_store = false;
     cfgOTA.cert_pem = (char*)ota_pem_start;
     cfgOTA.skip_cert_common_name_check = true;
-    cfgOTA.url = (char*)payload;
+    cfgOTA.url = payload;
     cfgOTA.is_async = false;
 
     uint8_t tryUpdate = 0;
@@ -411,7 +411,7 @@ void paramsStartOTA(char *topic, uint8_t *payload)
     ledSysStateSet(SYSLED_OTA, true);
     do {
       tryUpdate++;
-      rlog_i(tagOTA, "Start of firmware upgrade from \"%s\", attempt %d", (char*)payload, tryUpdate);
+      rlog_i(tagOTA, "Start of firmware upgrade from \"%s\", attempt %d", payload, tryUpdate);
       err = esp_https_ota(&cfgOTA);
       if (err == ESP_OK) {
         rlog_i(tagOTA, "Firmware upgrade completed!");
@@ -442,12 +442,12 @@ void paramsStartOTA(char *topic, uint8_t *payload)
 
 #if CONFIG_MQTT_COMMAND_ENABLE
 
-void paramsExecCmd(char *topic, uint8_t *payload)
+void paramsExecCmd(char *topic, char *payload)
 {
-  rlog_i(tagPARAMS, "Command received: [ %s ]", (char*)payload);
+  rlog_i(tagPARAMS, "Command received: [ %s ]", payload);
   
   #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_COMMAND_NOTIFY
-  tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, (char*)payload);
+  tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
   #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_COMMAND_NOTIFY
 
   // Resetting the value
@@ -456,7 +456,7 @@ void paramsExecCmd(char *topic, uint8_t *payload)
   mqttSubscribe(topic, CONFIG_MQTT_COMMAND_QOS);
 
   // restart controller
-  if (strcasecmp((char*)payload, CONFIG_MQTT_CMD_REBOOT) == 0) {
+  if (strcasecmp(payload, CONFIG_MQTT_CMD_REBOOT) == 0) {
     rlog_i(tagOTA, "******************* Restart system! *******************");
     esp_restart();
   };
@@ -464,12 +464,12 @@ void paramsExecCmd(char *topic, uint8_t *payload)
 
 #endif // CONFIG_MQTT_COMMAND_ENABLE
 
-void paramsSetParamValue(paramsEntryHandle_t entry, const bool publishMqtt, uint8_t *payload)
+void paramsSetParamValue(paramsEntryHandle_t entry, const bool publishMqtt, char *payload)
 {
-  rlog_i(tagPARAMS, "Received parameter [ %s ] from topic \"%s\"", (char*)payload, entry->topic);
+  rlog_i(tagPARAMS, "Received parameter [ %s ] from topic \"%s\"", payload, entry->topic);
   
   // Convert the resulting value to the target format
-  void *new_value = string2value(entry->type_value, (char*)payload);
+  void *new_value = string2value(entry->type_value, payload);
   if (new_value) {
     // If the new value is different from what is already written in the variable...
     if (equal2value(entry->type_value, entry->value, new_value)) {
@@ -522,15 +522,15 @@ void paramsSetParamValue(paramsEntryHandle_t entry, const bool publishMqtt, uint
       #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
     };
   } else {
-    rlog_e(tagPARAMS, "Could not convert value [ %s ]!", (char*)payload);
+    rlog_e(tagPARAMS, "Could not convert value [ %s ]!", payload);
     // We send a notification to telegram
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
     if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
       tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_BAD, 
-        entry->group->friendly, entry->friendly, entry->group->key, entry->key, (char*)payload);
+        entry->group->friendly, entry->friendly, entry->group->key, entry->key, payload);
     } else {
       tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_PARAM_BAD, 
-        "", entry->friendly, "", entry->key, (char*)payload);
+        "", entry->friendly, "", entry->key, payload);
     };
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
   };
@@ -575,14 +575,14 @@ void paramsValueApply(paramsEntryHandle_t entry, const bool callHandler)
 
 void paramsValueSet(paramsEntryHandle_t entry, char* payload)
 {
-  paramsSetParamValue(entry, true, (uint8_t*)payload);
+  paramsSetParamValue(entry, true, payload);
 }
 
 // -----------------------------------------------------------------------------------------------------------------------
 // --------------------------------------------------------- MQTT --------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
 
-void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
+void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
 {
   OPTIONS_LOCK();
   ledSysOn(true);  
@@ -625,7 +625,7 @@ void paramsMqttIncomingMessage(char *topic, uint8_t *payload, size_t len)
 
   rlog_w(tagPARAMS, "MQTT message from topic [ %s ] was not processed!", topic);
   #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
-  tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, (char*)payload);
+  tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
   #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
   ledSysOff(true);
   OPTIONS_UNLOCK();
@@ -643,7 +643,6 @@ void paramsMqttSubscribing()
     STAILQ_FOREACH(item, paramsList, next) {
       if (item->topic == nullptr) {
         paramsMqttSubscribeEntry(item);
-        vTaskDelay(CONFIG_MQTT_SUBSCRIBE_INTERVAL / portTICK_RATE_MS);
       };
     };
   };
