@@ -6,6 +6,7 @@ Library for storing and managing parameters ESP32 (ESP-IDF)
   - https://github.com/kotyara12/rLog
   - https://github.com/kotyara12/rTypes
   - https://github.com/kotyara12/reEsp32
+  - https://github.com/kotyara12/reEvents
 
 ### Notes:
   - libraries starting with the <b>re</b> prefix are only suitable for ESP32 and ESP-IDF
