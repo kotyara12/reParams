@@ -3,6 +3,7 @@
 #include <time.h>
 #include "rStrings.h"
 #include "rLog.h"
+#include "reStates.h"
 #include "reEsp32.h"
 #include "reNvs.h"
 #include "reEvents.h"
@@ -535,7 +536,7 @@ void paramsStartOTA(char *topic, char *payload)
 
     uint8_t tryUpdate = 0;
     esp_err_t err = ESP_OK;
-    eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_CLEAR, true);
+    ledSysOn(true);
     do {
       tryUpdate++;
       rlog_i(tagOTA, "Start of firmware upgrade from \"%s\", attempt %d", payload, tryUpdate);
@@ -626,7 +627,6 @@ void paramsTelegramNotify(paramsEntryHandle_t entry, bool notify, const char* no
 void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
 {
   OPTIONS_LOCK();
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_SET, true);
   if ((entry) && (entry->type_param == OPT_KIND_PARAMETER)) {
     // Save the value in the storage
     if ((entry->group) && (entry->group->key)) {
@@ -647,7 +647,7 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
       };
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
   };
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_CLEAR, true);
+  ledSysActivity();
   OPTIONS_UNLOCK();
 }
 
@@ -704,11 +704,9 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
 void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_mqtt)
 {
   OPTIONS_LOCK();
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_SET, true);
   if ((entry) && (entry->type_param == OPT_KIND_PARAMETER)) {
     _paramsValueSet(entry, new_value, publish_in_mqtt);
   };
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_CLEAR, true);
   OPTIONS_UNLOCK();
 }
 
@@ -719,7 +717,6 @@ void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_
 void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
 {
   OPTIONS_LOCK();
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_SET, true);  
 
   if (paramsList) {
     paramsEntryHandle_t item;
@@ -746,7 +743,6 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
             _paramsValueSet(item, payload, false);
             break;
         };
-        eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_CLEAR, true);
         OPTIONS_UNLOCK();
         return;
       };
@@ -758,7 +754,6 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
     tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
   #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
 
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_CLEAR, true);
   OPTIONS_UNLOCK();
 }
 
@@ -768,7 +763,7 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
     rlog_i(tagPARAMS, "Subscribing to parameter topics...");
 
     OPTIONS_LOCK();
-    eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_SET, true);  
+    ledSysOn(true);
 
     bool _resubscribe = forcedResubscribe || (_paramsMqttPrimary != mqttPrimary);
     _paramsMqttPrimary = mqttPrimary;
@@ -779,10 +774,11 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
         if (_resubscribe && !item->subscribed) {
           item->subscribed = _paramsMqttSubscribe(item);
         };
+        vTaskDelay(1);
       };
     };
 
-    eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_CLEAR, true);
+    ledSysOff(true);
     OPTIONS_UNLOCK();
   };
 }
@@ -792,13 +788,14 @@ void paramsMqttSubscribesClose()
   rlog_i(tagPARAMS, "Resetting parameter topics...");
 
   OPTIONS_LOCK();
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_SET, true);
+  ledSysOn(true);
 
   // If there is a connection to the broker, you should complete it correctly
   if (mqttIsConnected() && (paramsList)) {
     paramsEntryHandle_t item;
     STAILQ_FOREACH(item, paramsList, next) {
      _paramsMqttUnubscribe(item);
+     vTaskDelay(1);
     };
   };
 
@@ -816,7 +813,7 @@ void paramsMqttSubscribesClose()
     };
   };
 
-  eventLoopPostSystem(RE_SYS_SYSLED, RE_SYS_CLEAR, true);
+  ledSysOff(true);
   OPTIONS_UNLOCK();
 }
 
