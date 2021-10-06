@@ -441,6 +441,8 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       item->qos = qos;
       item->value = value;
+      item->min_value = nullptr;
+      item->max_value = nullptr;
       // Append item to list
       STAILQ_INSERT_TAIL(paramsList, item, next);
       // Read value from NVS storage
@@ -492,6 +494,110 @@ paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, con
   };
 
   return nullptr;
+}
+
+// -----------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------- Limits --------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+void paramsSetLimitsI8(paramsEntryHandle_t entry, int8_t min_value, int8_t max_value)
+{
+  if (entry) {
+    entry->min_value = (int8_t*)calloc(1, sizeof(int8_t));
+    entry->max_value = (int8_t*)calloc(1, sizeof(int8_t));
+    *(int8_t*)entry->min_value = min_value;
+    *(int8_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsU8(paramsEntryHandle_t entry, uint8_t min_value, uint8_t max_value)
+{
+  if (entry) {
+    entry->min_value = (uint8_t*)calloc(1, sizeof(uint8_t));
+    entry->max_value = (uint8_t*)calloc(1, sizeof(uint8_t));
+    *(uint8_t*)entry->min_value = min_value;
+    *(uint8_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsI16(paramsEntryHandle_t entry, int16_t min_value, int16_t max_value)
+{
+  if (entry) {
+    entry->min_value = (int16_t*)calloc(1, sizeof(int16_t));
+    entry->max_value = (int16_t*)calloc(1, sizeof(int16_t));
+    *(int16_t*)entry->min_value = min_value;
+    *(int16_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsU16(paramsEntryHandle_t entry, uint16_t min_value, uint16_t max_value)
+{
+  if (entry) {
+    entry->min_value = (uint16_t*)calloc(1, sizeof(uint16_t));
+    entry->max_value = (uint16_t*)calloc(1, sizeof(uint16_t));
+    *(uint16_t*)entry->min_value = min_value;
+    *(uint16_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsI32(paramsEntryHandle_t entry, int32_t min_value, int32_t max_value)
+{
+  if (entry) {
+    entry->min_value = (int32_t*)calloc(1, sizeof(int32_t));
+    entry->max_value = (int32_t*)calloc(1, sizeof(int32_t));
+    *(int32_t*)entry->min_value = min_value;
+    *(int32_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsU32(paramsEntryHandle_t entry, uint32_t min_value, uint32_t max_value)
+{
+  if (entry) {
+    entry->min_value = (uint32_t*)calloc(1, sizeof(uint32_t));
+    entry->max_value = (uint32_t*)calloc(1, sizeof(uint32_t));
+    *(uint32_t*)entry->min_value = min_value;
+    *(uint32_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsI64(paramsEntryHandle_t entry, int64_t min_value, int64_t max_value)
+{
+  if (entry) {
+    entry->min_value = (int64_t*)calloc(1, sizeof(int64_t));
+    entry->max_value = (int64_t*)calloc(1, sizeof(int64_t));
+    *(int64_t*)entry->min_value = min_value;
+    *(int64_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsU64(paramsEntryHandle_t entry, uint64_t min_value, uint64_t max_value)
+{
+  if (entry) {
+    entry->min_value = (uint64_t*)calloc(1, sizeof(uint64_t));
+    entry->max_value = (uint64_t*)calloc(1, sizeof(uint64_t));
+    *(uint64_t*)entry->min_value = min_value;
+    *(uint64_t*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsFloat(paramsEntryHandle_t entry, float min_value, float max_value)
+{
+  if (entry) {
+    entry->min_value = (float*)calloc(1, sizeof(float));
+    entry->max_value = (float*)calloc(1, sizeof(float));
+    *(float*)entry->min_value = min_value;
+    *(float*)entry->max_value = max_value;
+  };
+}
+
+void paramsSetLimitsDouble(paramsEntryHandle_t entry, double min_value, double max_value)
+{
+  if (entry) {
+    entry->min_value = (double*)calloc(1, sizeof(double));
+    entry->max_value = (double*)calloc(1, sizeof(double));
+    *(double*)entry->min_value = min_value;
+    *(double*)entry->max_value = max_value;
+  };
 }
 
 // -----------------------------------------------------------------------------------------------------------------------
@@ -670,26 +776,36 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
         paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_EQUAL, value);
       #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
     } else {
-      // Block context switching to other tasks to prevent reading the value while it is changing
-      vTaskSuspendAll();
-      // Set the new value to the variable
-      setNewValue(entry->type_value, entry->value, new_value);
-      // Restoring the scheduler
-      xTaskResumeAll();
-      // Save the value in the storage
-      if ((entry->group) && (entry->group->key)) {
-        nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
+      // Check the new value and possibly correct it to be valid
+      if (valueCheckLimits(entry->type_value, new_value, entry->min_value, entry->max_value)) {
+        // Block context switching to other tasks to prevent reading the value while it is changing
+        vTaskSuspendAll();
+        // Set the new value to the variable
+        setNewValue(entry->type_value, entry->value, new_value);
+        // Restoring the scheduler
+        xTaskResumeAll();
+        // Save the value in the storage
+        if ((entry->group) && (entry->group->key)) {
+          nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
+        };
+        // Publish the current value
+        paramsMqttPublish(entry, publish_in_mqtt);
+        // Post event
+        eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_CHANGED, &entry->id, sizeof(entry->id), portMAX_DELAY);
+        // Call change handler
+        if (entry->handler) entry->handler->onChange(PARAM_SET_CHANGED);      
+        // Send notification to telegram
+        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+          paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
+        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+      } else {
+        // Publish the current value
+        paramsMqttPublish(entry, publish_in_mqtt);
+        // Send notification to telegram
+        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+          paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_INVALID, value);
+        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
       };
-      // Publish the current value
-      paramsMqttPublish(entry, publish_in_mqtt);
-      // Post event
-      eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_CHANGED, &entry->id, sizeof(entry->id), portMAX_DELAY);
-      // Call change handler
-      if (entry->handler) entry->handler->onChange(PARAM_SET_CHANGED);      
-      // Send notification to telegram
-      #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-        paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
-      #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
     };
   } else {
     rlog_e(tagPARAMS, "Could not convert value [ %s ]!", value);
