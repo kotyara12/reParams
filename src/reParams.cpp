@@ -11,6 +11,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "project_config.h"
+#include "def_consts.h"
 #if CONFIG_MQTT_OTA_ENABLE
 #include "esp_ota_ops.h"
 #include "esp_http_client.h"
