@@ -50,9 +50,7 @@ typedef struct paramsEntry_t {
   void *min_value;
   void *max_value;
   char *topic_subscribe;
-  #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
   char *topic_publish;
-  #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
   bool subscribed = false;
   int qos;
   STAILQ_ENTRY(paramsEntry_t) next;
