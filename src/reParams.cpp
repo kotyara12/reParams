@@ -13,9 +13,7 @@
 #include "project_config.h"
 #include "def_consts.h"
 #if CONFIG_MQTT_OTA_ENABLE
-#include "esp_ota_ops.h"
-#include "esp_http_client.h"
-#include "esp_https_ota.h"
+#include "reOTA.h"
 #endif // CONFIG_MQTT_OTA_ENABLE
 #if CONFIG_TELEGRAM_ENABLE
 #include "reTgSend.h"
@@ -655,18 +653,12 @@ void paramsSetLimitsDouble(paramsEntryHandle_t entry, double min_value, double m
 
 #if CONFIG_MQTT_OTA_ENABLE
 
-extern const char ota_pem_start[] asm(CONFIG_MQTT_OTA_PEM_START);
-extern const char ota_pem_end[]   asm(CONFIG_MQTT_OTA_PEM_END); 
-
 static const char* tagOTA = "OTA";
 
 void paramsStartOTA(char *topic, char *payload)
 {
   if (strlen(payload) > 0) {
     rlog_i(tagOTA, "OTA firmware upgrade received from \"%s\"", payload);
-    #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_OTA
-      tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_OTA, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_OTA, payload);
-    #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_OTA
 
     // If the data is received from MQTT, remove the value from the topic
     if (topic) {
@@ -681,41 +673,10 @@ void paramsStartOTA(char *topic, char *payload)
     eventLoopPost(RE_SYSTEM_EVENTS, RE_SYS_OTA, payload, strlen(payload) + 1, portMAX_DELAY);
 
     // Wait a bit, so that all that is necessary has been completed
-    msTaskDelay(CONFIG_MQTT_OTA_DELAY);
+    msTaskDelay(CONFIG_OTA_DELAY);
 
-    esp_http_client_config_t cfgOTA;
-    memset(&cfgOTA, 0, sizeof(cfgOTA));
-    cfgOTA.use_global_ca_store = false;
-    cfgOTA.cert_pem = (char*)ota_pem_start;
-    cfgOTA.skip_cert_common_name_check = true;
-    cfgOTA.url = payload;
-    cfgOTA.is_async = false;
-
-    uint8_t tryUpdate = 0;
-    esp_err_t err = ESP_OK;
-    ledSysOn(true);
-    do {
-      tryUpdate++;
-      rlog_i(tagOTA, "Start of firmware upgrade from \"%s\", attempt %d", payload, tryUpdate);
-      err = esp_https_ota(&cfgOTA);
-      if (err == ESP_OK) {
-        rlog_i(tagOTA, "Firmware upgrade completed!");
-      } else {
-        rlog_e(tagOTA, "Firmware upgrade failed: %d!", err);
-      };
-    } while ((err != ESP_OK) && (tryUpdate < CONFIG_MQTT_OTA_ATTEMPTS));
-
-    #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_OTA
-    if (err == ESP_OK) {
-      tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_OTA, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_OTA_OK, err);
-    } else {
-      tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_OTA, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_OTA_FAILED, err);
-    };
-    #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_OTA
-
-    msTaskDelay(CONFIG_MQTT_OTA_DELAY);
-    rlog_i(tagOTA, "******************* Restart system! *******************");
-    esp_restart();
+    // Start OTA task
+    otaStart(malloc_string(payload));
   };
 }
 
@@ -748,7 +709,7 @@ void paramsExecCmd(char *topic, char *payload)
   if (strcasecmp(payload, CONFIG_MQTT_CMD_REBOOT) == 0) {
     rlog_i(tagOTA, "******************* Restart system! *******************");
     msTaskDelay(3000);
-    esp_restart();
+    espRestart(RR_COMMAND_RESET);
   } 
   // Custom commands
   else {
