@@ -31,7 +31,7 @@ static SemaphoreHandle_t paramsLock = nullptr;
 #define OPTIONS_LOCK() do {} while (xSemaphoreTake(paramsLock, portMAX_DELAY) != pdPASS)
 #define OPTIONS_UNLOCK() xSemaphoreGive(paramsLock)
 
-static const char* tagPARAMS = "PRMS";
+static const char* logTAG = "PRMS";
 
 static bool _paramsMqttPrimary = true;
 #if CONFIG_MQTT_PARAMS_WILDCARD
@@ -51,7 +51,7 @@ bool paramsInit()
   if (!paramsList) {
     paramsLock = xSemaphoreCreateMutex();
     if (!paramsLock) {
-      rlog_e(tagPARAMS, "Can't create parameters mutex!");
+      rlog_e(logTAG, "Can't create parameters mutex!");
       return false;
     };
 
@@ -61,7 +61,7 @@ bool paramsInit()
     }
     else {
       vSemaphoreDelete(paramsLock);
-      rlog_e(tagPARAMS, "Parameters manager initialization error!");
+      rlog_e(logTAG, "Parameters manager initialization error!");
       return false;
     }
 
@@ -71,7 +71,7 @@ bool paramsInit()
     }
     else {
       vSemaphoreDelete(paramsLock);
-      rlog_e(tagPARAMS, "Parameters manager initialization error!");
+      rlog_e(logTAG, "Parameters manager initialization error!");
       return false;
     };
   };
@@ -142,9 +142,9 @@ void paramsMqttTopicsFreeEntry(paramsEntryHandle_t entry)
 {
   if ((entry->key) && ((entry->topic_subscribe) || (entry->topic_publish))) {
     if (entry->group) {
-      rlog_d(tagPARAMS, "Topics for parameter \"%s.%s\" has been scrapped", entry->group->key, entry->key);
+      rlog_d(logTAG, "Topics for parameter \"%s.%s\" has been scrapped", entry->group->key, entry->key);
     } else {
-      rlog_d(tagPARAMS, "Topics for parameter \"%s\" has been scrapped", entry->key);
+      rlog_d(logTAG, "Topics for parameter \"%s\" has been scrapped", entry->key);
     };
   };
 
@@ -167,16 +167,16 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
       if ((entry->group) && (entry->group->topic)) {
         entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, entry->group->topic, entry->key);
         if (entry->topic_subscribe) {
-          rlog_d(tagPARAMS, "Generated subscription topic for parameter \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_subscribe);
+          rlog_d(logTAG, "Generated subscription topic for parameter \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_subscribe);
         };
       } else {
         entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, entry->key, nullptr);
         if (entry->topic_subscribe) {
-          rlog_d(tagPARAMS, "Generated subscription topic for parameter \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
+          rlog_d(logTAG, "Generated subscription topic for parameter \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
         };
       };
       if (!entry->topic_subscribe) {
-        rlog_e(tagPARAMS, "Failed to generate subscription topic!");
+        rlog_e(logTAG, "Failed to generate subscription topic!");
       };
       // Confirmation topic: only for parameters, data and commands do not have confirmation topics
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
@@ -184,19 +184,37 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
         if ((entry->group) && (entry->group->topic)) {
           entry->topic_publish = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_CONFIRM_TOPIC, entry->group->topic, entry->key);
           if (entry->topic_publish) {
-            rlog_d(tagPARAMS, "Generated confirmation topic for parameter \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_publish);
+            rlog_d(logTAG, "Generated confirmation topic for parameter \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_publish);
           };
         } else {
           entry->topic_publish = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_CONFIRM_TOPIC, entry->key, nullptr);
           if (entry->topic_publish) {
-            rlog_d(tagPARAMS, "Generated confirmation topic for parameter \"%s\": [ %s ]", entry->key, entry->topic_publish);
+            rlog_d(logTAG, "Generated confirmation topic for parameter \"%s\": [ %s ]", entry->key, entry->topic_publish);
           };
         };
         if (!entry->topic_publish) {
-          rlog_e(tagPARAMS, "Failed to generate confirmation topic!");
+          rlog_e(logTAG, "Failed to generate confirmation topic!");
         };
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
     } 
+
+    // Parameters related to all devices in a given location do not contain the device name
+    else if (entry->type_param == OPT_KIND_PARAMETER_LOCATION) {
+      if ((entry->group) && (entry->group->topic)) {
+        entry->topic_subscribe = mqttGetTopicLocation(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, entry->group->topic, entry->key);
+        if (entry->topic_subscribe) {
+          rlog_d(logTAG, "Generated subscription topic for parameter \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_subscribe);
+        };
+      } else {
+        entry->topic_subscribe = mqttGetTopicLocation(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, entry->key, nullptr);
+        if (entry->topic_subscribe) {
+          rlog_d(logTAG, "Generated subscription topic for parameter \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
+        };
+      };
+      if (!entry->topic_subscribe) {
+        rlog_e(logTAG, "Failed to generate subscription topic!");
+      };
+    }
 
     // The incoming data topic is completely determined by the group to which this parameter belongs
     else if ((entry->type_param == OPT_KIND_LOCDATA_ONLINE) || (entry->type_param == OPT_KIND_LOCDATA_STORED)) {
@@ -208,7 +226,7 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
           entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, entry->group->topic, entry->key, nullptr);
         #endif // CONFIG_MQTT_ROOT_LOCDATA_TOPIC
         if (entry->topic_subscribe) {
-          rlog_d(tagPARAMS, "Generated subscription topic for data \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_subscribe);
+          rlog_d(logTAG, "Generated subscription topic for data \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_subscribe);
         };
       } else {
         #ifdef CONFIG_MQTT_ROOT_LOCDATA_TOPIC
@@ -217,11 +235,11 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
           entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, entry->key, nullptr, nullptr);
         #endif // CONFIG_MQTT_ROOT_LOCDATA_TOPIC
         if (entry->topic_subscribe) {
-          rlog_d(tagPARAMS, "Generated subscription topic for data \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
+          rlog_d(logTAG, "Generated subscription topic for data \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
         };
       };
       if (!entry->topic_subscribe) {
-        rlog_e(tagPARAMS, "Failed to generate subscription topic!");
+        rlog_e(logTAG, "Failed to generate subscription topic!");
       };
     } 
 
@@ -230,7 +248,7 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
       entry->topic_publish = nullptr;
       entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_SYSTEM_LOCAL, CONFIG_MQTT_ROOT_SYSTEM_TOPIC, entry->key, nullptr);
       if (entry->topic_subscribe) {
-        rlog_d(tagPARAMS, "Generated subscription topic for system command \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
+        rlog_d(logTAG, "Generated subscription topic for system command \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
       };
     };
   };
@@ -258,7 +276,7 @@ void _paramsMqttConfirmEntry(paramsEntryHandle_t entry)
           true, false, true);
       };
     } else {
-      rlog_w(tagPARAMS, "Call publication parameter of undetermined value!");
+      rlog_w(logTAG, "Call publication parameter of undetermined value!");
     };
   };
 }
@@ -290,7 +308,7 @@ void _paramsMqttPublishEntry(paramsEntryHandle_t entry)
         entry->subscribed = mqttSubscribe(entry->topic_subscribe, entry->qos);
       };
     } else {
-      rlog_w(tagPARAMS, "Call publication parameter of undetermined value!");
+      rlog_w(logTAG, "Call publication parameter of undetermined value!");
     };
   };
 }
@@ -329,10 +347,10 @@ bool _paramsMqttSubscribeWildcard()
   if (_paramsWildcardTopic) free(_paramsWildcardTopic);
   _paramsWildcardTopic = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, "#", nullptr);
   if (_paramsWildcardTopic) {
-    rlog_d(tagPARAMS, "Generated subscription topic for all parameters: [ %s ]", _paramsWildcardTopic);
+    rlog_d(logTAG, "Generated subscription topic for all parameters: [ %s ]", _paramsWildcardTopic);
     return mqttSubscribe(_paramsWildcardTopic, CONFIG_MQTT_PARAMS_QOS);
   } else {
-    rlog_e(tagPARAMS, "Failed to generate wildcard topic!");
+    rlog_e(logTAG, "Failed to generate wildcard topic!");
   };
   return false;
 }
@@ -341,7 +359,7 @@ void paramsMqttFreeWildcard()
 {
   if (_paramsWildcardTopic) free(_paramsWildcardTopic);
   _paramsWildcardTopic = nullptr;
-  rlog_d(tagPARAMS, "Topics for all parameters has been scrapped");
+  rlog_d(logTAG, "Topics for all parameters has been scrapped");
 }
 
 #endif // CONFIG_MQTT_PARAMS_WILDCARD  
@@ -441,7 +459,7 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
         item->topic = (char*)name_topic;
       };
       if (strlen(item->key) > 15) {
-        rlog_w(tagPARAMS, "The group key name [%s] is too long!", item->key);
+        rlog_w(logTAG, "The group key name [%s] is too long!", item->key);
       };
       STAILQ_INSERT_TAIL(paramsGroups, item, next);
     };
@@ -492,9 +510,12 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       STAILQ_INSERT_TAIL(paramsList, item, next);
       // Read value from NVS storage
       if ((item->type_param == OPT_KIND_COMMAND) || (item->type_param == OPT_KIND_OTA)) {
-        rlog_d(tagPARAMS, "System handler \"%s\" registered", item->key);
+        rlog_d(logTAG, "System handler \"%s\" registered", item->key);
       } else {
-        if ((item->type_param == OPT_KIND_PARAMETER) || (item->type_param == OPT_KIND_LOCDATA_STORED)) {
+        if ((item->type_param == OPT_KIND_PARAMETER) 
+         || (item->type_param == OPT_KIND_PARAMETER_LOCATION) 
+         || (item->type_param == OPT_KIND_LOCDATA_STORED)) 
+        {
           void* prev_value = clone2value(item->type_value, item->value);
           if ((item->group) && (item->group->key)) {
             nvsRead(item->group->key, item->key, item->type_value, item->value);
@@ -510,9 +531,9 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
 
         char* str_value = value2string(item->type_value, item->value);
         if ((item->group) && (item->group->key)) {
-          rlog_d(tagPARAMS, "Parameter \"%s.%s\": [%s] registered", item->group->key, item->key, str_value);
+          rlog_d(logTAG, "Parameter \"%s.%s\": [%s] registered", item->group->key, item->key, str_value);
         } else {
-          rlog_d(tagPARAMS, "Parameter \"%s\": [%s] registered", item->key, str_value);
+          rlog_d(logTAG, "Parameter \"%s\": [%s] registered", item->key, str_value);
         };
         free(str_value);
       };
@@ -669,12 +690,6 @@ void paramsStartOTA(char *topic, char *payload)
       mqttSubscribe(topic, CONFIG_MQTT_OTA_QOS);
     };
 
-    // Notify other tasks to suspend activities
-    eventLoopPost(RE_SYSTEM_EVENTS, RE_SYS_OTA, payload, strlen(payload) + 1, portMAX_DELAY);
-
-    // Wait a bit, so that all that is necessary has been completed
-    msTaskDelay(CONFIG_OTA_DELAY);
-
     // Start OTA task
     otaStart(malloc_string(payload));
   };
@@ -690,7 +705,7 @@ void paramsStartOTA(char *topic, char *payload)
 
 void paramsExecCmd(char *topic, char *payload)
 {
-  rlog_i(tagPARAMS, "Command received: [ %s ]", payload);
+  rlog_i(logTAG, "Command received: [ %s ]", payload);
   
   #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
     tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
@@ -750,18 +765,22 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
   if (entry) {
     if ((entry->type_param != OPT_KIND_COMMAND) && (entry->type_param != OPT_KIND_OTA)) {
       // Save the value in the storage
-      if (((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_LOCDATA_STORED)) && (entry->group) && (entry->group->key)) {
+      if (((entry->type_param == OPT_KIND_PARAMETER) 
+        || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
+        || (entry->type_param == OPT_KIND_LOCDATA_STORED)) 
+      && (entry->group) && (entry->group->key)) 
+      {
         nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
       };
       // Post event and call change handler
       if (callHandler) eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_INTERNAL, &entry->id, sizeof(entry->id), portMAX_DELAY);
       if ((callHandler) && (entry->handler)) entry->handler->onChange(PARAM_SET_INTERNAL);      
       // Publish the current value
-      if (entry->type_param == OPT_KIND_PARAMETER) {
-        paramsMqttPublish(entry, true);
-      };
+      paramsMqttPublish(entry, true);
       // Send notification to telegram
-      if (entry->type_param == OPT_KIND_PARAMETER) {
+      if ((entry->type_param == OPT_KIND_PARAMETER) 
+       || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
+      {
         #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
           char* tg_value = value2string(entry->type_value, entry->value);
           if (tg_value) {
@@ -778,25 +797,24 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
 
 void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqtt)
 {
-  rlog_i(tagPARAMS, "Received new value [ %s ] for parameter \"%s.%s\"", value, entry->group->key, entry->key);
+  rlog_i(logTAG, "Received new value [ %s ] for parameter \"%s.%s\"", value, entry->group->key, entry->key);
   
   // Convert the resulting value to the target format
   void *new_value = string2value(entry->type_value, value);
   if (new_value) {
     // If the new value is different from what is already written in the variable...
     if (equal2value(entry->type_value, entry->value, new_value)) {
-      rlog_i(tagPARAMS, "Received value does not differ from existing one, ignored");
+      rlog_i(logTAG, "Received value does not differ from existing one, ignored");
       // Post event
       eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_EQUALS, &entry->id, sizeof(entry->id), portMAX_DELAY);
-      // Only for parameters...
-      if (entry->type_param == OPT_KIND_PARAMETER) {
-        // Publish the current value
-        paramsMqttPublish(entry, publish_in_mqtt);
-        // Send notification to telegram
-        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+      // Publish value
+      paramsMqttPublish(entry, publish_in_mqtt);
+      // Send notification to telegram
+      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED && CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+        if (entry->type_param == OPT_KIND_PARAMETER) {
           paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_EQUAL, value);
-        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
-      };
+        };
+      #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
     } else {
       // Check the new value and possibly correct it to be valid
       if (valueCheckLimits(entry->type_value, new_value, entry->min_value, entry->max_value)) {
@@ -807,43 +825,50 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
         // Restoring the scheduler
         xTaskResumeAll();
         // Save the value in the storage
-        if (((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_LOCDATA_STORED)) && (entry->group) && (entry->group->key)) {
+        if (((entry->type_param == OPT_KIND_PARAMETER) 
+          || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
+          || (entry->type_param == OPT_KIND_LOCDATA_STORED)) 
+         && (entry->group) && (entry->group->key)) 
+        {
           nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
         };
         // Post event and call change handler
         eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_CHANGED, &entry->id, sizeof(entry->id), portMAX_DELAY);
         if (entry->handler) entry->handler->onChange(PARAM_SET_CHANGED);      
         // Only for parameters...
-        if (entry->type_param == OPT_KIND_PARAMETER) {
-          // Publish the current value
-          paramsMqttPublish(entry, publish_in_mqtt);
-          // Send notification to telegram
-          #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
-          #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+        paramsMqttPublish(entry, publish_in_mqtt);
+        // Send notification to telegram
+        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+        if ((entry->type_param == OPT_KIND_PARAMETER) 
+         || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
+        {
+          paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
         };
+        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
       } else {
-        rlog_w(tagPARAMS, "Received value [ %s ] is out of range, ignored!", value);
+        rlog_w(logTAG, "Received value [ %s ] is out of range, ignored!", value);
         // Only for parameters...
-        if (entry->type_param == OPT_KIND_PARAMETER) {
-          // Publish the current value
-          paramsMqttPublish(entry, publish_in_mqtt);
-          // Send notification to telegram
-          #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+        paramsMqttPublish(entry, publish_in_mqtt);
+        // Send notification to telegram
+        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+          if ((entry->type_param == OPT_KIND_PARAMETER) 
+           || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
+          {
             paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_INVALID, value);
-          #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
-        };
+          };
+        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
       };
     };
   } else {
-    rlog_e(tagPARAMS, "Could not convert value [ %s ]!", value);
-    // Only for parameters...
-    if (entry->type_param == OPT_KIND_PARAMETER) {
-      // Send notification to telegram
-      #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+    rlog_e(logTAG, "Could not convert value [ %s ]!", value);
+    // Send notification to telegram
+    #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+      if ((entry->type_param == OPT_KIND_PARAMETER) 
+       || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
+      {
         paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_BAD, value);
-      #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
-    };
+      };
+    #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
   };
   if (new_value) free(new_value);
 }
@@ -852,7 +877,11 @@ void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_
 {
   OPTIONS_LOCK();
   if (entry) {
-    if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_LOCDATA_ONLINE) || (entry->type_param == OPT_KIND_LOCDATA_STORED)) {
+    if ((entry->type_param == OPT_KIND_PARAMETER) 
+     || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
+     || (entry->type_param == OPT_KIND_LOCDATA_ONLINE) 
+     || (entry->type_param == OPT_KIND_LOCDATA_STORED)) 
+    {
       _paramsValueSet(entry, new_value, publish_in_mqtt);
     };
   };
@@ -889,7 +918,17 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
             break;
 
           case OPT_KIND_PARAMETER:
+            _paramsValueSet(item, payload, false);
+            break;
+
+          case OPT_KIND_PARAMETER_LOCATION:
+            _paramsValueSet(item, payload, false);
+            break;
+
           case OPT_KIND_LOCDATA_ONLINE:
+            _paramsValueSet(item, payload, false);
+            break;
+
           case OPT_KIND_LOCDATA_STORED:
             _paramsValueSet(item, payload, false);
             break;
@@ -903,10 +942,11 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
     };
   };
 
-  rlog_w(tagPARAMS, "MQTT message from topic [ %s ] was not processed!", topic);
-  #if CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
-    tgSend(true, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
-  #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+  rlog_w(logTAG, "MQTT message from topic [ %s ] was not processed!", topic);
+  #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+    tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_TELEGRAM_DEVICE, 
+      CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
+  #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
 
   OPTIONS_UNLOCK();
 }
@@ -914,7 +954,7 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
 void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
 {
   if (mqttIsConnected()) {
-    rlog_i(tagPARAMS, "Subscribing to parameter topics...");
+    rlog_i(logTAG, "Subscribing to parameter topics...");
 
     OPTIONS_LOCK();
     ledSysOn(true);
@@ -939,7 +979,7 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
 
 void paramsMqttSubscribesClose()
 {
-  rlog_i(tagPARAMS, "Resetting parameter topics...");
+  rlog_i(logTAG, "Resetting parameter topics...");
 
   OPTIONS_LOCK();
   ledSysOn(true);
