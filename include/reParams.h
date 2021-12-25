@@ -52,6 +52,7 @@ typedef struct paramsEntry_t {
   char *topic_subscribe;
   char *topic_publish;
   bool subscribed = false;
+  bool notify = true;
   int qos;
   STAILQ_ENTRY(paramsEntry_t) next;
 } paramsEntry_t;

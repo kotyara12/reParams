@@ -497,6 +497,7 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       item->friendly = name_friendly;
       item->group = parent_group;
       item->key = name_key;
+      item->notify = true;
       item->subscribed = false;
       item->topic_subscribe = nullptr;
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
@@ -777,17 +778,16 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
       if ((callHandler) && (entry->handler)) entry->handler->onChange(PARAM_SET_INTERNAL);      
       // Publish the current value
       paramsMqttPublish(entry, true);
-      // Send notification to telegram
-      if ((entry->type_param == OPT_KIND_PARAMETER) 
-       || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
-      {
+      // Send notification
+      if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
+        // Send notification to telegram
         #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
           char* tg_value = value2string(entry->type_value, entry->value);
           if (tg_value) {
             paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, tg_value);
             free(tg_value);
           };
-        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
       };
     };
   };
@@ -809,12 +809,13 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
       eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_EQUALS, &entry->id, sizeof(entry->id), portMAX_DELAY);
       // Publish value
       paramsMqttPublish(entry, publish_in_mqtt);
-      // Send notification to telegram
-      #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED && CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-        if (entry->type_param == OPT_KIND_PARAMETER) {
+      // Send notification
+      if (entry->notify && (entry->type_param == OPT_KIND_PARAMETER)) {
+        // Send notification to telegram
+        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
           paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_EQUAL, value);
-        };
-      #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+      };
     } else {
       // Check the new value and possibly correct it to be valid
       if (valueCheckLimits(entry->type_value, new_value, entry->min_value, entry->max_value)) {
@@ -837,38 +838,35 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
         if (entry->handler) entry->handler->onChange(PARAM_SET_CHANGED);      
         // Only for parameters...
         paramsMqttPublish(entry, publish_in_mqtt);
-        // Send notification to telegram
-        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-        if ((entry->type_param == OPT_KIND_PARAMETER) 
-         || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
-        {
-          paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
+        // Send notification
+        if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
+          // Send notification to telegram
+          #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
+          #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
         };
-        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
       } else {
         rlog_w(logTAG, "Received value [ %s ] is out of range, ignored!", value);
         // Only for parameters...
         paramsMqttPublish(entry, publish_in_mqtt);
-        // Send notification to telegram
-        #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-          if ((entry->type_param == OPT_KIND_PARAMETER) 
-           || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
-          {
+        // Send notification
+        if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
+          // Send notification to telegram
+          #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
             paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_INVALID, value);
-          };
-        #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+          #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+        };
       };
     };
   } else {
     rlog_e(logTAG, "Could not convert value [ %s ]!", value);
-    // Send notification to telegram
-    #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-      if ((entry->type_param == OPT_KIND_PARAMETER) 
-       || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
-      {
+    // Send notification
+    if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) {
+      // Send notification to telegram
+      #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
         paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_BAD, value);
-      };
-    #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_TELEGRAM_PARAM_CHANGE_NOTIFY
+      #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+    };
   };
   if (new_value) free(new_value);
 }
