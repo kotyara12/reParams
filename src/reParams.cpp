@@ -293,19 +293,22 @@ void paramsMqttConfirmEntry(paramsEntryHandle_t entry)
 void _paramsMqttPublishEntry(paramsEntryHandle_t entry)
 {
   // Parameters
-  if (entry->type_param == OPT_KIND_PARAMETER) {
+  if ((entry->type_param == OPT_KIND_PARAMETER) 
+   || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
+  {
     if (entry->value) {
       if (!entry->topic_subscribe) {
         paramsMqttTopicsFreeEntry(entry);
         paramsMqttTopicsCreateEntry(entry);
       };
       if (entry->topic_subscribe) {
-        mqttUnsubscribe(entry->topic_subscribe);
+        // mqttUnsubscribe(entry->topic_subscribe);
+        entry->locked = true;
         mqttPublish(entry->topic_subscribe, 
           value2string(entry->type_value, entry->value), 
           entry->qos, CONFIG_MQTT_PARAMS_RETAINED, 
           true, false, true);
-        entry->subscribed = mqttSubscribe(entry->topic_subscribe, entry->qos);
+        // entry->subscribed = mqttSubscribe(entry->topic_subscribe, entry->qos);
       };
     } else {
       rlog_w(logTAG, "Call publication parameter of undetermined value!");
@@ -376,6 +379,10 @@ void paramsMqttPublish(paramsEntryHandle_t entry, bool publish_in_mqtt)
           _paramsMqttPublishEntry(entry);
         };
       #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+    } else if (entry->type_param == OPT_KIND_PARAMETER_LOCATION) {
+      if (publish_in_mqtt) {
+        _paramsMqttPublishEntry(entry);
+      };
     };
   };
 }
@@ -429,6 +436,13 @@ void _paramsMqttUnubscribe(paramsEntryHandle_t entry)
     #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED 
   };
   entry->subscribed = false;
+}
+
+void paramsMqttUnubscribe(paramsEntryHandle_t entry)
+{
+  if (mqttIsConnected()) {
+    _paramsMqttUnubscribe(entry);
+  };
 }
 
 // -----------------------------------------------------------------------------------------------------------------------
@@ -498,6 +512,7 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       item->group = parent_group;
       item->key = name_key;
       item->notify = true;
+      item->locked = false;
       item->subscribed = false;
       item->topic_subscribe = nullptr;
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
@@ -898,42 +913,48 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
     paramsEntryHandle_t item;
     STAILQ_FOREACH(item, paramsList, next) {
       if (strcasecmp(item->topic_subscribe, topic) == 0) {
-        switch (item->type_param) {
-          case OPT_KIND_OTA:
-            #if CONFIG_MQTT_OTA_ENABLE
-            if ((topic) && (payload) && (strcmp(payload, "") != 0)) {
-              paramsStartOTA(topic, payload);
-            };
-            #endif // CONFIG_MQTT_OTA_ENABLE
-            break;
-          
-          case OPT_KIND_COMMAND:
-            #if CONFIG_MQTT_COMMAND_ENABLE
-            if ((topic) && (payload) && (strcmp(payload, "") != 0)) {
-              paramsExecCmd(topic, payload);
-            };
-            #endif // CONFIG_MQTT_COMMAND_ENABLE
-            break;
+        if (item->locked) {
+          item->locked = false;
+          rlog_v(logTAG, "Incoming value for locked parameter, ignored");
+        } else {
+          switch (item->type_param) {
+            case OPT_KIND_OTA:
+              #if CONFIG_MQTT_OTA_ENABLE
+              if ((topic) && (payload) && (strcmp(payload, "") != 0)) {
+                paramsStartOTA(topic, payload);
+              };
+              #endif // CONFIG_MQTT_OTA_ENABLE
+              break;
+            
+            case OPT_KIND_COMMAND:
+              #if CONFIG_MQTT_COMMAND_ENABLE
+              if ((topic) && (payload) && (strcmp(payload, "") != 0)) {
+                paramsExecCmd(topic, payload);
+              };
+              #endif // CONFIG_MQTT_COMMAND_ENABLE
+              break;
 
-          case OPT_KIND_PARAMETER:
-            _paramsValueSet(item, payload, false);
-            break;
+            case OPT_KIND_PARAMETER:
+              _paramsValueSet(item, payload, false);
+              break;
 
-          case OPT_KIND_PARAMETER_LOCATION:
-            _paramsValueSet(item, payload, false);
-            break;
+            case OPT_KIND_PARAMETER_LOCATION:
+              _paramsValueSet(item, payload, false);
+              break;
 
-          case OPT_KIND_LOCDATA_ONLINE:
-            _paramsValueSet(item, payload, false);
-            break;
+            case OPT_KIND_LOCDATA_ONLINE:
+              _paramsValueSet(item, payload, false);
+              break;
 
-          case OPT_KIND_LOCDATA_STORED:
-            _paramsValueSet(item, payload, false);
-            break;
+            case OPT_KIND_LOCDATA_STORED:
+              _paramsValueSet(item, payload, false);
+              break;
 
-          default:
-            break;
+            default:
+              break;
+          };
         };
+
         OPTIONS_UNLOCK();
         return;
       };

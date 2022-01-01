@@ -52,6 +52,7 @@ typedef struct paramsEntry_t {
   char *topic_subscribe;
   char *topic_publish;
   bool subscribed = false;
+  bool locked = false;
   bool notify = true;
   int qos;
   STAILQ_ENTRY(paramsEntry_t) next;
@@ -84,6 +85,10 @@ void paramsSetLimitsI64(paramsEntryHandle_t entry, int64_t min_value, int64_t ma
 void paramsSetLimitsU64(paramsEntryHandle_t entry, uint64_t min_value, uint64_t max_value);
 void paramsSetLimitsFloat(paramsEntryHandle_t entry, float min_value, float max_value);
 void paramsSetLimitsDouble(paramsEntryHandle_t entry, double min_value, double max_value);
+
+void paramsMqttSubscribe(paramsEntryHandle_t entry);
+void paramsMqttUnsubscribe(paramsEntryHandle_t entry);
+void paramsMqttPublish(paramsEntryHandle_t entry, bool publish_in_mqtt);
 
 void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler);
 void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_mqtt);
