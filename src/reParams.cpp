@@ -55,7 +55,7 @@ bool paramsInit()
       return false;
     };
 
-    paramsGroups = (paramsGroupHeadHandle_t)calloc(1, sizeof(paramsGroupHead_t));
+    paramsGroups = (paramsGroupHeadHandle_t)esp_malloc(sizeof(paramsGroupHead_t));
     if (paramsGroups) {
       STAILQ_INIT(paramsGroups);
     }
@@ -65,7 +65,7 @@ bool paramsInit()
       return false;
     }
 
-    paramsList = (paramsEntryHeadHandle_t)calloc(1, sizeof(paramsEntryHead_t));
+    paramsList = (paramsEntryHeadHandle_t)esp_malloc(sizeof(paramsEntryHead_t));
     if (paramsList) {
       STAILQ_INIT(paramsList);
     }
@@ -460,7 +460,7 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
   OPTIONS_LOCK();
 
   if (paramsGroups) {
-    item = (paramsGroupHandle_t)calloc(1, sizeof(paramsGroup_t));
+    item = (paramsGroupHandle_t)esp_calloc(1, sizeof(paramsGroup_t));
     if (item) {
       item->parent = parent_group;
       if (item->parent) {
@@ -498,7 +498,7 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
   OPTIONS_LOCK();
 
   if (paramsList) {
-    item = (paramsEntryHandle_t)calloc(1, sizeof(paramsEntry_t));
+    item = (paramsEntryHandle_t)esp_calloc(1, sizeof(paramsEntry_t));
     if (item) {
       if (value) {
         item->id = (uint32_t)value;
@@ -587,100 +587,140 @@ paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, con
 void paramsSetLimitsI8(paramsEntryHandle_t entry, int8_t min_value, int8_t max_value)
 {
   if (entry) {
-    entry->min_value = (int8_t*)calloc(1, sizeof(int8_t));
-    entry->max_value = (int8_t*)calloc(1, sizeof(int8_t));
-    *(int8_t*)entry->min_value = min_value;
-    *(int8_t*)entry->max_value = max_value;
+    entry->min_value = (int8_t*)esp_calloc(1, sizeof(int8_t));
+    if (entry->min_value) {
+      *(int8_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (int8_t*)esp_calloc(1, sizeof(int8_t));
+    if (entry->max_value) {
+      *(int8_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsU8(paramsEntryHandle_t entry, uint8_t min_value, uint8_t max_value)
 {
   if (entry) {
-    entry->min_value = (uint8_t*)calloc(1, sizeof(uint8_t));
-    entry->max_value = (uint8_t*)calloc(1, sizeof(uint8_t));
-    *(uint8_t*)entry->min_value = min_value;
-    *(uint8_t*)entry->max_value = max_value;
+    entry->min_value = (uint8_t*)esp_calloc(1, sizeof(uint8_t));
+    if (entry->min_value) {
+      *(uint8_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (uint8_t*)esp_calloc(1, sizeof(uint8_t));
+    if (entry->max_value) {
+      *(uint8_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsI16(paramsEntryHandle_t entry, int16_t min_value, int16_t max_value)
 {
   if (entry) {
-    entry->min_value = (int16_t*)calloc(1, sizeof(int16_t));
-    entry->max_value = (int16_t*)calloc(1, sizeof(int16_t));
-    *(int16_t*)entry->min_value = min_value;
-    *(int16_t*)entry->max_value = max_value;
+    entry->min_value = (int16_t*)esp_calloc(1, sizeof(int16_t));
+    if (entry->min_value) {
+      *(int16_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (int16_t*)esp_calloc(1, sizeof(int16_t));
+    if (entry->max_value) {
+      *(int16_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsU16(paramsEntryHandle_t entry, uint16_t min_value, uint16_t max_value)
 {
   if (entry) {
-    entry->min_value = (uint16_t*)calloc(1, sizeof(uint16_t));
-    entry->max_value = (uint16_t*)calloc(1, sizeof(uint16_t));
-    *(uint16_t*)entry->min_value = min_value;
-    *(uint16_t*)entry->max_value = max_value;
+    entry->min_value = (uint16_t*)esp_calloc(1, sizeof(uint16_t));
+    if (entry->min_value) {
+      *(uint16_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (uint16_t*)esp_calloc(1, sizeof(uint16_t));
+    if (entry->max_value) {
+      *(uint16_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsI32(paramsEntryHandle_t entry, int32_t min_value, int32_t max_value)
 {
   if (entry) {
-    entry->min_value = (int32_t*)calloc(1, sizeof(int32_t));
-    entry->max_value = (int32_t*)calloc(1, sizeof(int32_t));
-    *(int32_t*)entry->min_value = min_value;
-    *(int32_t*)entry->max_value = max_value;
+    entry->min_value = (int32_t*)esp_calloc(1, sizeof(int32_t));
+    if (entry->min_value) {
+      *(int32_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (int32_t*)esp_calloc(1, sizeof(int32_t));
+    if (entry->max_value) {
+      *(int32_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsU32(paramsEntryHandle_t entry, uint32_t min_value, uint32_t max_value)
 {
   if (entry) {
-    entry->min_value = (uint32_t*)calloc(1, sizeof(uint32_t));
-    entry->max_value = (uint32_t*)calloc(1, sizeof(uint32_t));
-    *(uint32_t*)entry->min_value = min_value;
-    *(uint32_t*)entry->max_value = max_value;
+    entry->min_value = (uint32_t*)esp_calloc(1, sizeof(uint32_t));
+    if (entry->min_value) {
+      *(uint32_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (uint32_t*)esp_calloc(1, sizeof(uint32_t));
+    if (entry->max_value) {
+      *(uint32_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsI64(paramsEntryHandle_t entry, int64_t min_value, int64_t max_value)
 {
   if (entry) {
-    entry->min_value = (int64_t*)calloc(1, sizeof(int64_t));
-    entry->max_value = (int64_t*)calloc(1, sizeof(int64_t));
-    *(int64_t*)entry->min_value = min_value;
-    *(int64_t*)entry->max_value = max_value;
+    entry->min_value = (int64_t*)esp_calloc(1, sizeof(int64_t));
+    if (entry->min_value) {
+      *(int64_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (int64_t*)esp_calloc(1, sizeof(int64_t));
+    if (entry->max_value) {
+      *(int64_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsU64(paramsEntryHandle_t entry, uint64_t min_value, uint64_t max_value)
 {
   if (entry) {
-    entry->min_value = (uint64_t*)calloc(1, sizeof(uint64_t));
-    entry->max_value = (uint64_t*)calloc(1, sizeof(uint64_t));
-    *(uint64_t*)entry->min_value = min_value;
-    *(uint64_t*)entry->max_value = max_value;
+    entry->min_value = (uint64_t*)esp_calloc(1, sizeof(uint64_t));
+    if (entry->min_value) {
+      *(uint64_t*)entry->min_value = min_value;
+    };
+    entry->max_value = (uint64_t*)esp_calloc(1, sizeof(uint64_t));
+    if (entry->max_value) {
+      *(uint64_t*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsFloat(paramsEntryHandle_t entry, float min_value, float max_value)
 {
   if (entry) {
-    entry->min_value = (float*)calloc(1, sizeof(float));
-    entry->max_value = (float*)calloc(1, sizeof(float));
-    *(float*)entry->min_value = min_value;
-    *(float*)entry->max_value = max_value;
+    entry->min_value = (float*)esp_calloc(1, sizeof(float));
+    if (entry->min_value) {
+      *(float*)entry->min_value = min_value;
+    };
+    entry->max_value = (float*)esp_calloc(1, sizeof(float));
+    if (entry->max_value) {
+      *(float*)entry->max_value = max_value;
+    };
   };
 }
 
 void paramsSetLimitsDouble(paramsEntryHandle_t entry, double min_value, double max_value)
 {
   if (entry) {
-    entry->min_value = (double*)calloc(1, sizeof(double));
-    entry->max_value = (double*)calloc(1, sizeof(double));
-    *(double*)entry->min_value = min_value;
-    *(double*)entry->max_value = max_value;
+    entry->min_value = (double*)esp_calloc(1, sizeof(double));
+    if (entry->min_value) {
+      *(double*)entry->min_value = min_value;
+    };
+    entry->max_value = (double*)esp_calloc(1, sizeof(double));
+    if (entry->max_value) {
+      *(double*)entry->max_value = max_value;
+    };
   };
 }
 
@@ -694,7 +734,7 @@ static const char* tagOTA = "OTA";
 
 void paramsStartOTA(char *topic, char *payload)
 {
-  if (strlen(payload) > 0) {
+  if ((payload) && (strlen(payload) > 0)) {
     rlog_i(tagOTA, "OTA firmware upgrade received from \"%s\"", payload);
 
     // If the data is received from MQTT, remove the value from the topic
@@ -721,31 +761,33 @@ void paramsStartOTA(char *topic, char *payload)
 
 void paramsExecCmd(char *topic, char *payload)
 {
-  rlog_i(logTAG, "Command received: [ %s ]", payload);
-  
-  #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
-    tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
-  #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
+  if (payload && (strlen(payload) > 0)) {
+    rlog_i(logTAG, "Command received: [ %s ]", payload);
+    
+    #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
+      tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
+    #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
 
-  // If the data is received from MQTT, remove the value from the topic
-  if (topic) {
-    mqttUnsubscribe(topic);
-    vTaskDelay(1);
-    mqttPublish(topic, nullptr, CONFIG_MQTT_COMMAND_QOS, CONFIG_MQTT_COMMAND_RETAINED, true, false, false);
-    vTaskDelay(1);
-    mqttSubscribe(topic, CONFIG_MQTT_COMMAND_QOS);
-  };
+    // If the data is received from MQTT, remove the value from the topic
+    if (topic) {
+      mqttUnsubscribe(topic);
+      vTaskDelay(1);
+      mqttPublish(topic, nullptr, CONFIG_MQTT_COMMAND_QOS, CONFIG_MQTT_COMMAND_RETAINED, true, false, false);
+      vTaskDelay(1);
+      mqttSubscribe(topic, CONFIG_MQTT_COMMAND_QOS);
+    };
 
-  // Built-in command: reload controller
-  if (strcasecmp(payload, CONFIG_MQTT_CMD_REBOOT) == 0) {
-    rlog_i(tagOTA, "******************* Restart system! *******************");
-    msTaskDelay(3000);
-    espRestart(RR_COMMAND_RESET);
-  } 
-  // Custom commands
-  else {
-    // Send a command to the main loop for custom processing
-    eventLoopPost(RE_SYSTEM_EVENTS, RE_SYS_COMMAND, payload, strlen(payload)+1, portMAX_DELAY);
+    // Built-in command: reload controller
+    if (strcasecmp(payload, CONFIG_MQTT_CMD_REBOOT) == 0) {
+      rlog_i(tagOTA, "******************* Restart system! *******************");
+      msTaskDelay(3000);
+      espRestart(RR_COMMAND_RESET);
+    } 
+    // Custom commands
+    else {
+      // Send a command to the main loop for custom processing
+      eventLoopPost(RE_SYSTEM_EVENTS, RE_SYS_COMMAND, payload, strlen(payload)+1, portMAX_DELAY);
+    };
   };
 }
 
@@ -907,67 +949,69 @@ void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_
 
 void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
 {
-  OPTIONS_LOCK();
+  if (topic && payload) {
+    OPTIONS_LOCK();
 
-  if (paramsList) {
-    paramsEntryHandle_t item;
-    STAILQ_FOREACH(item, paramsList, next) {
-      if (strcasecmp(item->topic_subscribe, topic) == 0) {
-        if (item->locked) {
-          item->locked = false;
-          rlog_v(logTAG, "Incoming value for locked parameter, ignored");
-        } else {
-          switch (item->type_param) {
-            case OPT_KIND_OTA:
-              #if CONFIG_MQTT_OTA_ENABLE
-              if ((topic) && (payload) && (strcmp(payload, "") != 0)) {
-                paramsStartOTA(topic, payload);
-              };
-              #endif // CONFIG_MQTT_OTA_ENABLE
-              break;
-            
-            case OPT_KIND_COMMAND:
-              #if CONFIG_MQTT_COMMAND_ENABLE
-              if ((topic) && (payload) && (strcmp(payload, "") != 0)) {
-                paramsExecCmd(topic, payload);
-              };
-              #endif // CONFIG_MQTT_COMMAND_ENABLE
-              break;
+    if (paramsList) {
+      paramsEntryHandle_t item;
+      STAILQ_FOREACH(item, paramsList, next) {
+        if (strcasecmp(item->topic_subscribe, topic) == 0) {
+          if (item->locked) {
+            item->locked = false;
+            rlog_v(logTAG, "Incoming value for locked parameter, ignored");
+          } else {
+            switch (item->type_param) {
+              case OPT_KIND_OTA:
+                #if CONFIG_MQTT_OTA_ENABLE
+                if (strcmp(payload, "") != 0) {
+                  paramsStartOTA(topic, payload);
+                };
+                #endif // CONFIG_MQTT_OTA_ENABLE
+                break;
+              
+              case OPT_KIND_COMMAND:
+                #if CONFIG_MQTT_COMMAND_ENABLE
+                if (strcmp(payload, "") != 0) {
+                  paramsExecCmd(topic, payload);
+                };
+                #endif // CONFIG_MQTT_COMMAND_ENABLE
+                break;
 
-            case OPT_KIND_PARAMETER:
-              _paramsValueSet(item, payload, false);
-              break;
+              case OPT_KIND_PARAMETER:
+                _paramsValueSet(item, payload, false);
+                break;
 
-            case OPT_KIND_PARAMETER_LOCATION:
-              _paramsValueSet(item, payload, false);
-              break;
+              case OPT_KIND_PARAMETER_LOCATION:
+                _paramsValueSet(item, payload, false);
+                break;
 
-            case OPT_KIND_LOCDATA_ONLINE:
-              _paramsValueSet(item, payload, false);
-              break;
+              case OPT_KIND_LOCDATA_ONLINE:
+                _paramsValueSet(item, payload, false);
+                break;
 
-            case OPT_KIND_LOCDATA_STORED:
-              _paramsValueSet(item, payload, false);
-              break;
+              case OPT_KIND_LOCDATA_STORED:
+                _paramsValueSet(item, payload, false);
+                break;
 
-            default:
-              break;
+              default:
+                break;
+            };
           };
-        };
 
-        OPTIONS_UNLOCK();
-        return;
+          OPTIONS_UNLOCK();
+          return;
+        };
       };
     };
+
+    rlog_w(logTAG, "MQTT message from topic [ %s ] was not processed!", topic);
+    #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+      tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_TELEGRAM_DEVICE, 
+        CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
+    #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
+
+    OPTIONS_UNLOCK();
   };
-
-  rlog_w(logTAG, "MQTT message from topic [ %s ] was not processed!", topic);
-  #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-    tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_TELEGRAM_DEVICE, 
-      CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
-  #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-
-  OPTIONS_UNLOCK();
 }
 
 void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
@@ -1049,7 +1093,9 @@ static void paramsMqttEventHandler(void* arg, esp_event_base_t event_base, int32
   // MQTT connected
   if (event_id == RE_MQTT_CONNECTED) {
     re_mqtt_event_data_t* data = (re_mqtt_event_data_t*)event_data;
-    paramsMqttSubscribesOpen(data->primary, true);
+    if (data) {
+      paramsMqttSubscribesOpen(data->primary, true);
+    };
   } 
   // MQTT disconnected
   else if ((event_id == RE_MQTT_CONN_LOST) || (event_id == RE_MQTT_CONN_FAILED)) {
@@ -1058,11 +1104,13 @@ static void paramsMqttEventHandler(void* arg, esp_event_base_t event_base, int32
   // MQTT incomng message
   else if (event_id == RE_MQTT_INCOMING_DATA) {
     re_mqtt_incoming_data_t* data = (re_mqtt_incoming_data_t*)event_data;
-    // Process incomng message
-    paramsMqttIncomingMessage(data->topic, data->data, data->data_len);
-    // Since only string pointers are sent through the event dispatcher, you must manually delete the strings
-    if (data->topic) free(data->topic);
-    if (data->data) free(data->data);
+    if (data) {
+      // Process incomng message
+      paramsMqttIncomingMessage(data->topic, data->data, data->data_len);
+      // Since only string pointers are sent through the event dispatcher, you must manually delete the strings
+      if (data->topic) free(data->topic);
+      if (data->data) free(data->data);
+    };
   };
 }
 
