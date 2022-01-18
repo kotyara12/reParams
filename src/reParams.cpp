@@ -949,7 +949,7 @@ void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_
 
 void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
 {
-  if (topic && payload) {
+  if ((topic) && (payload)) {
     OPTIONS_LOCK();
 
     if (paramsList) {
