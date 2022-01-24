@@ -779,9 +779,7 @@ void paramsExecCmd(char *topic, char *payload)
 
     // Built-in command: reload controller
     if (strcasecmp(payload, CONFIG_MQTT_CMD_REBOOT) == 0) {
-      rlog_i(tagOTA, "******************* Restart system! *******************");
-      msTaskDelay(3000);
-      espRestart(RR_COMMAND_RESET);
+      espRestart(RR_COMMAND_RESET, 3000);
     } 
     // Custom commands
     else {
