@@ -765,7 +765,7 @@ void paramsExecCmd(char *topic, char *payload)
     rlog_i(logTAG, "Command received: [ %s ]", payload);
     
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
-      tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
+      tgSend(TG_SERVICE, CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
 
     // If the data is received from MQTT, remove the value from the topic
@@ -801,15 +801,15 @@ void paramsTelegramNotify(paramsEntryHandle_t entry, bool notify, const char* no
 {
   if (value) {
     if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
-      tgSend(notify, CONFIG_TELEGRAM_DEVICE, notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, value);
+      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, value);
     } else {
-      tgSend(notify, CONFIG_TELEGRAM_DEVICE, notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, value);
+      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, value);
     };
   } else {
     if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
-      tgSend(notify, CONFIG_TELEGRAM_DEVICE, notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, "");
+      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, "");
     } else {
-      tgSend(notify, CONFIG_TELEGRAM_DEVICE, notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, "");
+      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, "");
     };
   };
 }
@@ -1004,7 +1004,7 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
 
     rlog_w(logTAG, "MQTT message from topic [ %s ] was not processed!", topic);
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-      tgSend(CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_TELEGRAM_DEVICE, 
+      tgSend(TG_SERVICE, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_TELEGRAM_DEVICE, 
         CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
 
