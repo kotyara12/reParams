@@ -846,7 +846,9 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
       };
     };
   };
+  #if CONFIG_SYSLED_MQTT_ACTIVITY
   ledSysActivity();
+  #endif // CONFIG_SYSLED_MQTT_ACTIVITY
   OPTIONS_UNLOCK();
 }
 
@@ -1018,7 +1020,9 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
     rlog_i(logTAG, "Subscribing to parameter topics...");
 
     OPTIONS_LOCK();
+    #if CONFIG_SYSLED_MQTT_ACTIVITY
     ledSysOn(true);
+    #endif // CONFIG_SYSLED_MQTT_ACTIVITY
 
     bool _resubscribe = forcedResubscribe || (_paramsMqttPrimary != mqttPrimary);
     _paramsMqttPrimary = mqttPrimary;
@@ -1033,7 +1037,9 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
       };
     };
 
+    #if CONFIG_SYSLED_MQTT_ACTIVITY
     ledSysOff(true);
+    #endif // CONFIG_SYSLED_MQTT_ACTIVITY
     OPTIONS_UNLOCK();
   };
 }
@@ -1043,7 +1049,9 @@ void paramsMqttSubscribesClose()
   rlog_i(logTAG, "Resetting parameter topics...");
 
   OPTIONS_LOCK();
+  #if CONFIG_SYSLED_MQTT_ACTIVITY
   ledSysOn(true);
+  #endif // CONFIG_SYSLED_MQTT_ACTIVITY
 
   // If there is a connection to the broker, you should complete it correctly
   if (mqttIsConnected() && (paramsList)) {
@@ -1068,7 +1076,9 @@ void paramsMqttSubscribesClose()
     };
   };
 
+  #if CONFIG_SYSLED_MQTT_ACTIVITY
   ledSysOff(true);
+  #endif // CONFIG_SYSLED_MQTT_ACTIVITY
   OPTIONS_UNLOCK();
 }
 
@@ -1090,8 +1100,8 @@ static void paramsMqttEventHandler(void* arg, esp_event_base_t event_base, int32
 {
   // MQTT connected
   if (event_id == RE_MQTT_CONNECTED) {
-    re_mqtt_event_data_t* data = (re_mqtt_event_data_t*)event_data;
-    if (data) {
+    if (event_data) {
+      re_mqtt_event_data_t* data = (re_mqtt_event_data_t*)event_data;
       paramsMqttSubscribesOpen(data->primary, true);
     };
   } 
@@ -1101,8 +1111,8 @@ static void paramsMqttEventHandler(void* arg, esp_event_base_t event_base, int32
   }
   // MQTT incomng message
   else if (event_id == RE_MQTT_INCOMING_DATA) {
-    re_mqtt_incoming_data_t* data = (re_mqtt_incoming_data_t*)event_data;
-    if (data) {
+    if (event_data) {
+      re_mqtt_incoming_data_t* data = (re_mqtt_incoming_data_t*)event_data;
       // Process incomng message
       paramsMqttIncomingMessage(data->topic, data->data, data->data_len);
       // Since only string pointers are sent through the event dispatcher, you must manually delete the strings
