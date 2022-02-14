@@ -54,7 +54,7 @@ typedef struct paramsEntry_t {
   bool subscribed = false;
   bool locked = false;
   bool notify = true;
-  int qos;
+  int  qos;
   STAILQ_ENTRY(paramsEntry_t) next;
 } paramsEntry_t;
 typedef struct paramsEntry_t *paramsEntryHandle_t;

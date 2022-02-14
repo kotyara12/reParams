@@ -142,9 +142,9 @@ void paramsMqttTopicsFreeEntry(paramsEntryHandle_t entry)
 {
   if ((entry->key) && ((entry->topic_subscribe) || (entry->topic_publish))) {
     if (entry->group) {
-      rlog_d(logTAG, "Topics for parameter \"%s.%s\" has been scrapped", entry->group->key, entry->key);
+      rlog_d(logTAG, "Topic for parameter \"%s.%s\" has been scrapped", entry->group->key, entry->key);
     } else {
-      rlog_d(logTAG, "Topics for parameter \"%s\" has been scrapped", entry->key);
+      rlog_d(logTAG, "Topic for parameter \"%s\" has been scrapped", entry->key);
     };
   };
 
@@ -765,7 +765,7 @@ void paramsExecCmd(char *topic, char *payload)
     rlog_i(logTAG, "Command received: [ %s ]", payload);
     
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
-      tgSend(TG_SERVICE, CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
+      tgSend(TG_MAIN, CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
 
     // If the data is received from MQTT, remove the value from the topic
