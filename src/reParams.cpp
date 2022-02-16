@@ -394,11 +394,15 @@ bool _paramsMqttSubscribe(paramsEntryHandle_t entry)
   paramsMqttTopicsCreateEntry(entry);
 
   // Publish current value
-  #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-    if (entry->type_param == OPT_KIND_PARAMETER) {
-      _paramsMqttConfirmEntry(entry);
-    };
-  #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+  if (entry->type_param == OPT_KIND_PARAMETER_LOCATION) {
+    _paramsMqttPublishEntry(entry);
+  } else {
+    #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+      if (entry->type_param == OPT_KIND_PARAMETER) {
+        _paramsMqttConfirmEntry(entry);
+      };
+    #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
+  };
 
   // Subscribe to topic
   #if CONFIG_MQTT_PARAMS_WILDCARD
