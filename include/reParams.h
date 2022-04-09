@@ -33,7 +33,7 @@ typedef struct paramsGroup_t {
   paramsGroup_t *parent;
   char *key;
   char *topic;
-  char* friendly;
+  char *friendly;
   STAILQ_ENTRY(paramsGroup_t) next;
 } paramsGroup_t;
 typedef struct paramsGroup_t *paramsGroupHandle_t;
@@ -44,8 +44,8 @@ typedef struct paramsEntry_t {
   param_handler_t *handler;
   paramsGroup_t *group;
   uint32_t id;
-  const char* friendly;
-  const char* key;
+  const char *friendly;
+  const char *key;
   void *value;
   void *min_value;
   void *max_value;

@@ -163,6 +163,7 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
 {
   if (entry->key) {
     // Parameters always start with the prefix "config", but some parameter groups can be local
+    // %LOCATION% / %DEVICE% / CONFI[G|RM] / ...
     if (entry->type_param == OPT_KIND_PARAMETER) {
       if ((entry->group) && (entry->group->topic)) {
         entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, entry->group->topic, entry->key);
@@ -199,6 +200,7 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
     } 
 
     // Parameters related to all devices in a given location do not contain the device name
+    // %LOCATION% / CONFIG / ...
     else if (entry->type_param == OPT_KIND_PARAMETER_LOCATION) {
       if ((entry->group) && (entry->group->topic)) {
         entry->topic_subscribe = mqttGetTopicLocation(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, entry->group->topic, entry->key);
@@ -216,23 +218,24 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
       };
     }
 
-    // The incoming data topic is completely determined by the group to which this parameter belongs
+    // Local data starting with the special prefix %LOCAL%
+    // %LOCAL% / ... or %LOCAL% / CONFIG_MQTT_ROOT_LOCDATA_TOPIC / ...
     else if ((entry->type_param == OPT_KIND_LOCDATA_ONLINE) || (entry->type_param == OPT_KIND_LOCDATA_STORED)) {
       entry->topic_publish = nullptr;
       if ((entry->group) && (entry->group->topic)) {
         #ifdef CONFIG_MQTT_ROOT_LOCDATA_TOPIC
-          entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, CONFIG_MQTT_ROOT_LOCDATA_TOPIC, entry->group->topic, entry->key);
+          entry->topic_subscribe = mqttGetTopicSpecial(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, CONFIG_MQTT_ROOT_LOCDATA_TOPIC, entry->group->topic, entry->key);
         #else
-          entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, entry->group->topic, entry->key, nullptr);
+          entry->topic_subscribe = mqttGetTopicLocation(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, entry->group->topic, entry->key, nullptr);
         #endif // CONFIG_MQTT_ROOT_LOCDATA_TOPIC
         if (entry->topic_subscribe) {
           rlog_d(logTAG, "Generated subscription topic for data \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_subscribe);
         };
       } else {
         #ifdef CONFIG_MQTT_ROOT_LOCDATA_TOPIC
-          entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, CONFIG_MQTT_ROOT_LOCDATA_TOPIC, entry->key, nullptr);
+          entry->topic_subscribe = mqttGetTopicSpecial(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, CONFIG_MQTT_ROOT_LOCDATA_TOPIC, entry->key, nullptr);
         #else
-          entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, entry->key, nullptr, nullptr);
+          entry->topic_subscribe = mqttGetTopicLocation(_paramsMqttPrimary, CONFIG_MQTT_ROOT_LOCDATA_LOCAL, entry->key, nullptr, nullptr);
         #endif // CONFIG_MQTT_ROOT_LOCDATA_TOPIC
         if (entry->topic_subscribe) {
           rlog_d(logTAG, "Generated subscription topic for data \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
@@ -242,6 +245,21 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
         rlog_e(logTAG, "Failed to generate subscription topic!");
       };
     } 
+
+    // External data. Topic is always fixed
+    else if ((entry->type_param == OPT_KIND_EXTDATA_ONLINE) || (entry->type_param == OPT_KIND_EXTDATA_STORED)) {
+      entry->topic_publish = nullptr;
+      if ((entry->group) && (entry->group->topic)) {
+        entry->topic_subscribe = mqttGetSubTopic(entry->group->topic, entry->key);
+      } else {
+        entry->topic_subscribe = malloc_string(entry->key);
+      };
+      if (entry->topic_subscribe) {
+        rlog_d(logTAG, "Generated subscription topic for data \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
+      } else {
+        rlog_e(logTAG, "Failed to generate subscription topic!");
+      };
+    }
 
     // Commands have no groups, always start with prefix "system"
     else {
@@ -464,6 +482,12 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
   OPTIONS_LOCK();
 
   if (paramsGroups) {
+    STAILQ_FOREACH(item, paramsGroups, next) {
+      if ((item->parent == parent_group) && (strcasecmp(item->key, name_key) == 0)) {
+        return item;
+      };
+    };
+
     item = (paramsGroupHandle_t)esp_calloc(1, sizeof(paramsGroup_t));
     if (item) {
       item->parent = parent_group;
@@ -502,6 +526,12 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
   OPTIONS_LOCK();
 
   if (paramsList) {
+    STAILQ_FOREACH(item, paramsList, next) {
+      if ((item->group == parent_group) && (strcasecmp(item->key, name_key) == 0)) {
+        return item;
+      };
+    };
+
     item = (paramsEntryHandle_t)esp_calloc(1, sizeof(paramsEntry_t));
     if (item) {
       if (value) {
@@ -534,7 +564,8 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       } else {
         if ((item->type_param == OPT_KIND_PARAMETER) 
          || (item->type_param == OPT_KIND_PARAMETER_LOCATION) 
-         || (item->type_param == OPT_KIND_LOCDATA_STORED)) 
+         || (item->type_param == OPT_KIND_LOCDATA_STORED)
+         || (item->type_param == OPT_KIND_EXTDATA_STORED)) 
         {
           void* prev_value = clone2value(item->type_value, item->value);
           if ((item->group) && (item->group->key)) {
@@ -827,7 +858,8 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
       // Save the value in the storage
       if (((entry->type_param == OPT_KIND_PARAMETER) 
         || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
-        || (entry->type_param == OPT_KIND_LOCDATA_STORED)) 
+        || (entry->type_param == OPT_KIND_LOCDATA_STORED)
+        || (entry->type_param == OPT_KIND_EXTDATA_STORED)) 
       && (entry->group) && (entry->group->key)) 
       {
         nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
@@ -889,7 +921,8 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
         // Save the value in the storage
         if (((entry->type_param == OPT_KIND_PARAMETER) 
           || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
-          || (entry->type_param == OPT_KIND_LOCDATA_STORED)) 
+          || (entry->type_param == OPT_KIND_LOCDATA_STORED)
+          || (entry->type_param == OPT_KIND_EXTDATA_STORED)) 
          && (entry->group) && (entry->group->key)) 
         {
           nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
@@ -939,7 +972,9 @@ void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_
     if ((entry->type_param == OPT_KIND_PARAMETER) 
      || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
      || (entry->type_param == OPT_KIND_LOCDATA_ONLINE) 
-     || (entry->type_param == OPT_KIND_LOCDATA_STORED)) 
+     || (entry->type_param == OPT_KIND_LOCDATA_STORED
+     || (entry->type_param == OPT_KIND_EXTDATA_ONLINE) 
+     || (entry->type_param == OPT_KIND_EXTDATA_STORED))) 
     {
       _paramsValueSet(entry, new_value, publish_in_mqtt);
     };
@@ -982,18 +1017,11 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
                 break;
 
               case OPT_KIND_PARAMETER:
-                _paramsValueSet(item, payload, false);
-                break;
-
               case OPT_KIND_PARAMETER_LOCATION:
-                _paramsValueSet(item, payload, false);
-                break;
-
               case OPT_KIND_LOCDATA_ONLINE:
-                _paramsValueSet(item, payload, false);
-                break;
-
               case OPT_KIND_LOCDATA_STORED:
+              case OPT_KIND_EXTDATA_ONLINE:
+              case OPT_KIND_EXTDATA_STORED:
                 _paramsValueSet(item, payload, false);
                 break;
 
