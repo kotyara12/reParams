@@ -164,7 +164,7 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
   if (entry->key) {
     // Parameters always start with the prefix "config", but some parameter groups can be local
     // %LOCATION% / %DEVICE% / CONFI[G|RM] / ...
-    if (entry->type_param == OPT_KIND_PARAMETER) {
+    if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)) {
       if ((entry->group) && (entry->group->topic)) {
         entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, CONFIG_MQTT_ROOT_PARAMS_TOPIC, entry->group->topic, entry->key);
         if (entry->topic_subscribe) {
@@ -281,7 +281,7 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
 void _paramsMqttConfirmEntry(paramsEntryHandle_t entry)
 {
   // Parameters only
-  if (entry->type_param == OPT_KIND_PARAMETER) {
+  if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)) {
     if (entry->value) {
       if ((!entry->topic_subscribe) || (!entry->topic_publish)) {
         paramsMqttTopicsFreeEntry(entry);
@@ -312,6 +312,7 @@ void _paramsMqttPublishEntry(paramsEntryHandle_t entry)
 {
   // Parameters
   if ((entry->type_param == OPT_KIND_PARAMETER) 
+   || (entry->type_param == OPT_KIND_PARAMETER_ONLINE) 
    || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) 
   {
     if (entry->value) {
@@ -389,7 +390,7 @@ void paramsMqttPublish(paramsEntryHandle_t entry, bool publish_in_mqtt)
 {
   if (mqttIsConnected()) {
     // Parameters
-    if (entry->type_param == OPT_KIND_PARAMETER) {
+    if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)) {
       #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
         _paramsMqttConfirmEntry(entry);
       #else
@@ -416,7 +417,7 @@ bool _paramsMqttSubscribe(paramsEntryHandle_t entry)
     _paramsMqttPublishEntry(entry);
   } else {
     #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-      if (entry->type_param == OPT_KIND_PARAMETER) {
+      if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)) {
         _paramsMqttConfirmEntry(entry);
       };
     #endif // CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
@@ -424,7 +425,7 @@ bool _paramsMqttSubscribe(paramsEntryHandle_t entry)
 
   // Subscribe to topic
   #if CONFIG_MQTT_PARAMS_WILDCARD
-    if (entry->type_param == OPT_KIND_PARAMETER) {
+    if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)) {
       return (_paramsWildcardTopic) || _paramsMqttSubscribeWildcard();
     } else {
       return _paramsMqttSubscribeEntry(entry);
@@ -444,7 +445,7 @@ void _paramsMqttUnubscribe(paramsEntryHandle_t entry)
   // Everything except outgoing data
   if (entry->subscribed) {
     #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
-      if (entry->type_param == OPT_KIND_PARAMETER) {
+      if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)) {
         if (_paramsWildcardTopic) {
           mqttUnsubscribe(_paramsWildcardTopic);
           free(_paramsWildcardTopic);
@@ -800,7 +801,8 @@ void paramsExecCmd(char *topic, char *payload)
     rlog_i(logTAG, "Command received: [ %s ]", payload);
     
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
-      tgSend(TG_MAIN, CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, CONFIG_MESSAGE_TG_CMD, payload);
+      tgSend(MK_MAIN, CONFIG_NOTIFY_TELEGRAM_COMMAND_PRIORITY, CONFIG_NOTIFY_TELEGRAM_ALERT_COMMAND, CONFIG_TELEGRAM_DEVICE, 
+        CONFIG_MESSAGE_TG_CMD, payload);
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_COMMAND
 
     // If the data is received from MQTT, remove the value from the topic
@@ -832,19 +834,23 @@ void paramsExecCmd(char *topic, char *payload)
 
 #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
 
-void paramsTelegramNotify(paramsEntryHandle_t entry, bool notify, const char* notify_template, char* value)
+void paramsTelegramNotify(paramsEntryHandle_t entry, msg_priority_t priority, bool notify, const char* notify_template, char* value)
 {
   if (value) {
     if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
-      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, value);
+      tgSendMsg(encMsgOptions(MK_PARAMS, notify, priority), CONFIG_TELEGRAM_DEVICE, 
+        notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, value);
     } else {
-      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, value);
+      tgSendMsg(encMsgOptions(MK_PARAMS, notify, priority), CONFIG_TELEGRAM_DEVICE, 
+        notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, value);
     };
   } else {
     if ((entry->group) && (entry->group->friendly) && (entry->group->key)) {
-      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, "");
+      tgSendMsg(encMsgOptions(MK_PARAMS, notify, priority), CONFIG_TELEGRAM_DEVICE, 
+        notify_template, entry->group->friendly, entry->friendly, entry->group->key, entry->key, "");
     } else {
-      tgSend(TG_PARAMS, notify, CONFIG_TELEGRAM_DEVICE, notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, "");
+      tgSendMsg(encMsgOptions(MK_PARAMS, notify, priority), CONFIG_TELEGRAM_DEVICE, 
+        notify_template, "", entry->friendly, CONFIG_MQTT_COMMON_TOPIC, entry->key, "");
     };
   };
 }
@@ -870,12 +876,15 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
       // Publish the current value
       paramsMqttPublish(entry, true);
       // Send notification
-      if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
+      if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) 
+                         || (entry->type_param == OPT_KIND_PARAMETER_ONLINE) 
+                         || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
         // Send notification to telegram
         #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
           char* tg_value = value2string(entry->type_value, entry->value);
           if (tg_value) {
-            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, tg_value);
+            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_PARAM_PRIORITY, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, 
+              CONFIG_MESSAGE_TG_PARAM_CHANGE, tg_value);
             free(tg_value);
           };
         #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
@@ -903,10 +912,11 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
       // Publish value
       paramsMqttPublish(entry, publish_in_mqtt);
       // Send notification
-      if (entry->notify && (entry->type_param == OPT_KIND_PARAMETER)) {
+      if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE))) {
         // Send notification to telegram
         #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-          paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_EQUAL, value);
+          paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_PARAM_PRIORITY, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, 
+            CONFIG_MESSAGE_TG_PARAM_EQUAL, value);
         #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
       };
     } else {
@@ -933,10 +943,13 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
         // Only for parameters...
         paramsMqttPublish(entry, publish_in_mqtt);
         // Send notification
-        if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
+        if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) 
+                           || (entry->type_param == OPT_KIND_PARAMETER_ONLINE) 
+                           || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
           // Send notification to telegram
           #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
+            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_PARAM_PRIORITY, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, 
+              CONFIG_MESSAGE_TG_PARAM_CHANGE, value);
           #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
         };
       } else {
@@ -944,10 +957,13 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
         // Only for parameters...
         paramsMqttPublish(entry, publish_in_mqtt);
         // Send notification
-        if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
+        if (entry->notify && ((entry->type_param == OPT_KIND_PARAMETER) 
+                           || (entry->type_param == OPT_KIND_PARAMETER_ONLINE) 
+                           || (entry->type_param == OPT_KIND_PARAMETER_LOCATION))) {
           // Send notification to telegram
           #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_INVALID, value);
+            paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_PARAM_PRIORITY, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, 
+              CONFIG_MESSAGE_TG_PARAM_INVALID, value);
           #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
         };
       };
@@ -955,10 +971,13 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
   } else {
     rlog_e(logTAG, "Could not convert value [ %s ]!", value);
     // Send notification
-    if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) {
+    if ((entry->type_param == OPT_KIND_PARAMETER) 
+     || (entry->type_param == OPT_KIND_PARAMETER_ONLINE) 
+     || (entry->type_param == OPT_KIND_PARAMETER_LOCATION)) {
       // Send notification to telegram
       #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-        paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_MESSAGE_TG_PARAM_BAD, value);
+        paramsTelegramNotify(entry, CONFIG_NOTIFY_TELEGRAM_PARAM_PRIORITY, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, 
+          CONFIG_MESSAGE_TG_PARAM_BAD, value);
       #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
     };
   };
@@ -970,6 +989,7 @@ void paramsValueSet(paramsEntryHandle_t entry, char *new_value, bool publish_in_
   OPTIONS_LOCK();
   if (entry) {
     if ((entry->type_param == OPT_KIND_PARAMETER) 
+     || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)
      || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
      || (entry->type_param == OPT_KIND_LOCDATA_ONLINE) 
      || (entry->type_param == OPT_KIND_LOCDATA_STORED
@@ -1017,6 +1037,7 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
                 break;
 
               case OPT_KIND_PARAMETER:
+              case OPT_KIND_PARAMETER_ONLINE:
               case OPT_KIND_PARAMETER_LOCATION:
               case OPT_KIND_LOCDATA_ONLINE:
               case OPT_KIND_LOCDATA_STORED:
@@ -1038,7 +1059,7 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
 
     rlog_w(logTAG, "MQTT message from topic [ %s ] was not processed!", topic);
     #if CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
-      tgSend(TG_SERVICE, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_TELEGRAM_DEVICE, 
+      tgSend(MK_SERVICE, CONFIG_NOTIFY_TELEGRAM_PARAM_PRIORITY, CONFIG_NOTIFY_TELEGRAM_ALERT_PARAM_CHANGED, CONFIG_TELEGRAM_DEVICE, 
         CONFIG_MESSAGE_TG_MQTT_NOT_PROCESSED, topic, payload);
     #endif // CONFIG_TELEGRAM_ENABLE && CONFIG_NOTIFY_TELEGRAM_PARAM_CHANGED
 
