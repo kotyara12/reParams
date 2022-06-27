@@ -12,10 +12,25 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <time.h>
 #include "sys/queue.h"
 #include "project_config.h"
+#include "def_consts.h"
 #include "rTypes.h"
+#include "rLog.h"
+#include "rStrings.h"
+// #include "reStates.h"
+#include "reEsp32.h"
+#include "reNvs.h"
+#include "reEvents.h"
+#include "reMqtt.h"
+#if CONFIG_MQTT_OTA_ENABLE
+#include "reOTA.h"
+#endif // CONFIG_MQTT_OTA_ENABLE
+#if CONFIG_TELEGRAM_ENABLE
+#include "reTgSend.h"
+#endif // CONFIG_TELEGRAM_ENABLE
 
 typedef enum {
   PARAM_NVS_RESTORED = 0,

@@ -1,23 +1,8 @@
 #include "reParams.h"
 #include <string.h>
 #include <time.h>
-#include "rStrings.h"
-#include "rLog.h"
-#include "reStates.h"
-#include "reEsp32.h"
-#include "reNvs.h"
-#include "reEvents.h"
-#include "reMqtt.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
-#include "project_config.h"
-#include "def_consts.h"
-#if CONFIG_MQTT_OTA_ENABLE
-#include "reOTA.h"
-#endif // CONFIG_MQTT_OTA_ENABLE
-#if CONFIG_TELEGRAM_ENABLE
-#include "reTgSend.h"
-#endif // CONFIG_TELEGRAM_ENABLE
 
 STAILQ_HEAD(paramsGroupHead_t, paramsGroup_t);
 STAILQ_HEAD(paramsEntryHead_t, paramsEntry_t);
@@ -291,7 +276,7 @@ void _paramsMqttConfirmEntry(paramsEntryHandle_t entry)
         mqttPublish(entry->topic_publish, 
           value2string(entry->type_value, entry->value), 
           entry->qos, CONFIG_MQTT_CONFIRM_RETAINED, 
-          true, false, true);
+          false, true);
       };
     } else {
       rlog_w(logTAG, "Call publication parameter of undetermined value!");
@@ -326,7 +311,7 @@ void _paramsMqttPublishEntry(paramsEntryHandle_t entry)
         mqttPublish(entry->topic_subscribe, 
           value2string(entry->type_value, entry->value), 
           entry->qos, CONFIG_MQTT_PARAMS_RETAINED, 
-          true, false, true);
+          false, true);
         // entry->subscribed = mqttSubscribe(entry->topic_subscribe, entry->qos);
       };
     } else {
@@ -777,7 +762,7 @@ void paramsStartOTA(char *topic, char *payload)
     if (topic) {
       mqttUnsubscribe(topic);
       vTaskDelay(1);
-      mqttPublish(topic, nullptr, CONFIG_MQTT_OTA_QOS, CONFIG_MQTT_OTA_RETAINED, true, false, false);
+      mqttPublish(topic, nullptr, CONFIG_MQTT_OTA_QOS, CONFIG_MQTT_OTA_RETAINED, false, false);
       vTaskDelay(1);
       mqttSubscribe(topic, CONFIG_MQTT_OTA_QOS);
     };
@@ -809,14 +794,15 @@ void paramsExecCmd(char *topic, char *payload)
     if (topic) {
       mqttUnsubscribe(topic);
       vTaskDelay(1);
-      mqttPublish(topic, nullptr, CONFIG_MQTT_COMMAND_QOS, CONFIG_MQTT_COMMAND_RETAINED, true, false, false);
+      mqttPublish(topic, nullptr, CONFIG_MQTT_COMMAND_QOS, CONFIG_MQTT_COMMAND_RETAINED, false, false);
       vTaskDelay(1);
       mqttSubscribe(topic, CONFIG_MQTT_COMMAND_QOS);
     };
 
     // Built-in command: reload controller
     if (strcasecmp(payload, CONFIG_MQTT_CMD_REBOOT) == 0) {
-      espRestart(RR_COMMAND_RESET, 3000);
+      msTaskDelay(3000);
+      espRestart(RR_COMMAND_RESET);
     } 
     // Custom commands
     else {
