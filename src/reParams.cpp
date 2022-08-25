@@ -399,7 +399,8 @@ bool _paramsMqttSubscribe(paramsEntryHandle_t entry)
 
   // Publish current value
   if (entry->type_param == OPT_KIND_PARAMETER_LOCATION) {
-    _paramsMqttPublishEntry(entry);
+    // 2022-08-03: Left location parameters only on "reception"
+    // _paramsMqttPublishEntry(entry);
   } else {
     #if CONFIG_MQTT_PARAMS_CONFIRM_ENABLED
       if ((entry->type_param == OPT_KIND_PARAMETER) || (entry->type_param == OPT_KIND_PARAMETER_ONLINE)) {
@@ -1000,45 +1001,56 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
     if (paramsList) {
       paramsEntryHandle_t item;
       STAILQ_FOREACH(item, paramsList, next) {
-        if (strcasecmp(item->topic_subscribe, topic) == 0) {
-          if (item->locked) {
-            item->locked = false;
-            rlog_v(logTAG, "Incoming value for locked parameter, ignored");
-          } else {
-            switch (item->type_param) {
-              case OPT_KIND_OTA:
-                #if CONFIG_MQTT_OTA_ENABLE
-                if (strcmp(payload, "") != 0) {
-                  paramsStartOTA(topic, payload);
-                };
-                #endif // CONFIG_MQTT_OTA_ENABLE
-                break;
-              
-              case OPT_KIND_COMMAND:
-                #if CONFIG_MQTT_COMMAND_ENABLE
-                if (strcmp(payload, "") != 0) {
-                  paramsExecCmd(topic, payload);
-                };
-                #endif // CONFIG_MQTT_COMMAND_ENABLE
-                break;
+        if (item->topic_subscribe == nullptr) {
+          uint8_t tryCnt = 0;
+          do {
+            tryCnt++;
+            paramsMqttTopicsCreateEntry(item);
+            if (item->topic_subscribe == nullptr) vTaskDelay(10);
+          } while ((item->topic_subscribe == nullptr) && (tryCnt < 255));
+        };
 
-              case OPT_KIND_PARAMETER:
-              case OPT_KIND_PARAMETER_ONLINE:
-              case OPT_KIND_PARAMETER_LOCATION:
-              case OPT_KIND_LOCDATA_ONLINE:
-              case OPT_KIND_LOCDATA_STORED:
-              case OPT_KIND_EXTDATA_ONLINE:
-              case OPT_KIND_EXTDATA_STORED:
-                _paramsValueSet(item, payload, false);
-                break;
+        if (item->topic_subscribe != nullptr) {
+          if (strcasecmp(item->topic_subscribe, topic) == 0) {
+            if (item->locked) {
+              item->locked = false;
+              rlog_v(logTAG, "Incoming value for locked parameter, ignored");
+            } else {
+              switch (item->type_param) {
+                case OPT_KIND_OTA:
+                  #if CONFIG_MQTT_OTA_ENABLE
+                  if (strcmp(payload, "") != 0) {
+                    paramsStartOTA(topic, payload);
+                  };
+                  #endif // CONFIG_MQTT_OTA_ENABLE
+                  break;
+                
+                case OPT_KIND_COMMAND:
+                  #if CONFIG_MQTT_COMMAND_ENABLE
+                  if (strcmp(payload, "") != 0) {
+                    paramsExecCmd(topic, payload);
+                  };
+                  #endif // CONFIG_MQTT_COMMAND_ENABLE
+                  break;
 
-              default:
-                break;
+                case OPT_KIND_PARAMETER:
+                case OPT_KIND_PARAMETER_ONLINE:
+                case OPT_KIND_PARAMETER_LOCATION:
+                case OPT_KIND_LOCDATA_ONLINE:
+                case OPT_KIND_LOCDATA_STORED:
+                case OPT_KIND_EXTDATA_ONLINE:
+                case OPT_KIND_EXTDATA_STORED:
+                  _paramsValueSet(item, payload, false);
+                  break;
+
+                default:
+                  break;
+              };
             };
-          };
 
-          OPTIONS_UNLOCK();
-          return;
+            OPTIONS_UNLOCK();
+            return;
+          };
         };
       };
     };
@@ -1063,6 +1075,7 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
     ledSysOn(true);
     #endif // CONFIG_SYSLED_MQTT_ACTIVITY
 
+    bool _failed = false;
     bool _resubscribe = forcedResubscribe || (_paramsMqttPrimary != mqttPrimary);
     _paramsMqttPrimary = mqttPrimary;
 
@@ -1070,7 +1083,18 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
       paramsEntryHandle_t item;
       STAILQ_FOREACH(item, paramsList, next) {
         if (_resubscribe && !item->subscribed) {
-          item->subscribed = _paramsMqttSubscribe(item);
+          uint8_t i = 0;
+          while (mqttIsConnected() && (i < 100) && (mqttGetOutboxSize() > 0)) {
+            vTaskDelay(10);
+            i++;
+          };
+          if (mqttIsConnected() && (i < 100)) {
+            item->subscribed = _paramsMqttSubscribe(item);
+          } else {
+            rlog_d(logTAG, "Connection to MQTT broker was unexpectedly lost");
+            _failed = true;
+            break;
+          };
         };
         vTaskDelay(1);
       };
@@ -1080,6 +1104,11 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
     ledSysOff(true);
     #endif // CONFIG_SYSLED_MQTT_ACTIVITY
     OPTIONS_UNLOCK();
+
+    if (_failed) {
+      paramsMqttSubscribesClose();
+      mqttTaskRestart();
+    };
   };
 }
 
