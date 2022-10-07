@@ -1084,11 +1084,14 @@ void paramsMqttSubscribesOpen(bool mqttPrimary, bool forcedResubscribe)
       STAILQ_FOREACH(item, paramsList, next) {
         if (_resubscribe && !item->subscribed) {
           uint8_t i = 0;
-          while (mqttIsConnected() && (i < 100) && (mqttGetOutboxSize() > 0)) {
+          while (mqttIsConnected() && (i < 100) && (mqttGetOutboxSize() > 1024)) {
+            if (i == 0) { 
+              rlog_v(logTAG, "Waiting for previous data to be sent from outbox..."); 
+            };
             vTaskDelay(10);
             i++;
           };
-          if (mqttIsConnected() && (i < 100)) {
+          if (mqttIsConnected()) {
             item->subscribed = _paramsMqttSubscribe(item);
           } else {
             rlog_d(logTAG, "Connection to MQTT broker was unexpectedly lost");
