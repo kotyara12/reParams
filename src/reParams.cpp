@@ -470,8 +470,14 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
 
   if (paramsGroups) {
     STAILQ_FOREACH(item, paramsGroups, next) {
-      if ((item->parent == parent_group) && (strcasecmp(item->key, name_key) == 0)) {
-        return item;
+      if (name_key) {
+        if ((item->parent == parent_group) && (strcasecmp(item->key, name_key) == 0)) {
+          return item;
+        };
+      } else {
+        if ((item->parent == parent_group) && (item->key == nullptr)) {
+          return item;
+        };
       };
     };
 
@@ -479,15 +485,27 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
     if (item) {
       item->parent = parent_group;
       if (item->parent) {
-        item->key = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_GROUP_DELIMITER, item->parent->key, name_key);
-        item->friendly = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_FIENDLY_DELIMITER, item->parent->friendly, name_friendly);
-        item->topic = mqttGetSubTopic(item->parent->topic, name_topic);
+        if (item->parent->key) {
+          item->key = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_GROUP_DELIMITER, item->parent->key, name_key);
+        } else {
+          item->key = (char*)name_key;
+        };
+        if (item->parent->friendly) {
+          item->friendly = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_FIENDLY_DELIMITER, item->parent->friendly, name_friendly);
+        } else {
+          item->friendly = (char*)name_friendly;
+        };
+        if (item->parent->topic) {
+          item->topic = mqttGetSubTopic(item->parent->topic, name_topic);
+        } else {
+          item->topic = (char*)name_topic;
+        };
       } else {
         item->key = (char*)name_key;
         item->friendly = (char*)name_friendly;
         item->topic = (char*)name_topic;
       };
-      if (strlen(item->key) > 15) {
+      if ((item->key) && (strlen(item->key) > 15)) {
         rlog_w(logTAG, "The group key name [%s] is too long!", item->key);
       };
       STAILQ_INSERT_TAIL(paramsGroups, item, next);
@@ -568,12 +586,14 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
         };
 
         char* str_value = value2string(item->type_value, item->value);
-        if ((item->group) && (item->group->key)) {
-          rlog_d(logTAG, "Parameter \"%s.%s\": [%s] registered", item->group->key, item->key, str_value);
-        } else {
-          rlog_d(logTAG, "Parameter \"%s\": [%s] registered", item->key, str_value);
+        if (str_value) {
+          if ((item->group) && (item->group->key)) {
+            rlog_d(logTAG, "Parameter \"%s.%s\": [%s] registered", item->group->key, item->key, str_value);
+          } else {
+            rlog_d(logTAG, "Parameter \"%s\": [%s] registered", item->key, str_value);
+          };
+          free(str_value);
         };
-        free(str_value);
       };
       // We try to subscribe if the connection to the server is already established
       paramsMqttSubscribe(item);
