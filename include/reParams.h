@@ -38,6 +38,8 @@ typedef enum {
   PARAM_SET_CHANGED
 } param_change_mode_t;
 
+typedef void (*params_callback_t) (paramsEntryHandle_t item, param_change_mode_t mode, void* value);
+
 class param_handler_t {
   public:
     virtual ~param_handler_t() {};
@@ -56,7 +58,8 @@ typedef struct paramsGroup_t *paramsGroupHandle_t;
 typedef struct paramsEntry_t {
   param_kind_t type_param;
   param_type_t type_value;
-  param_handler_t *handler;
+  void *handler;
+  
   paramsGroup_t *group;
   uint32_t id;
   const char *friendly;

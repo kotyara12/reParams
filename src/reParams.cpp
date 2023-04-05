@@ -566,6 +566,8 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       // Read value from NVS storage
       if ((item->type_param == OPT_KIND_COMMAND) || (item->type_param == OPT_KIND_OTA)) {
         rlog_d(logTAG, "System handler \"%s\" registered", item->key);
+      } else if ((item->type_param == OPT_KIND_SIGNAL) || (item->type_param == OPT_KIND_SIGNAL_AUTOCLR)) {
+        rlog_d(logTAG, "Signal \"%s\" registered", item->key);
       } else {
         if ((item->type_param == OPT_KIND_PARAMETER) 
          || (item->type_param == OPT_KIND_PARAMETER_LOCATION) 
@@ -836,6 +838,26 @@ void paramsExecCmd(char *topic, char *payload)
 #endif // CONFIG_MQTT_COMMAND_ENABLE
 
 // -----------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------- Signals -------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+void paramsProcessSignal(paramsEntryHandle_t item, char *payload)
+{
+  if (item->topic_subscribe && payload && (strlen(payload) > 0)) {
+    rlog_i(logTAG, "Received signal [ %s ] in topic \"%s\"", payload, item->topic_subscribe);
+    
+    // Clear topic
+    if (item->type_param == OPT_KIND_SIGNAL_AUTOCLR) {
+      mqttUnsubscribe(item->topic_subscribe);
+      vTaskDelay(1);
+      mqttPublish(item->topic_subscribe, nullptr, item->qos, false, false, false);
+      vTaskDelay(1);
+      mqttSubscribe(item->topic_subscribe, item->qos);
+    };
+  };
+}
+
+// -----------------------------------------------------------------------------------------------------------------------
 // --------------------------------------------------- Store new value ---------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
 
@@ -867,7 +889,8 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
 {
   OPTIONS_LOCK();
   if (entry) {
-    if ((entry->type_param != OPT_KIND_COMMAND) && (entry->type_param != OPT_KIND_OTA)) {
+    if ((entry->type_param != OPT_KIND_COMMAND) && (entry->type_param != OPT_KIND_OTA)
+      && (entry->type_param != OPT_KIND_SIGNAL) && (entry->type_param != OPT_KIND_SIGNAL_AUTOCLR)) {
       // Save the value in the storage
       if (((entry->type_param == OPT_KIND_PARAMETER) 
         || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
@@ -1051,6 +1074,13 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
                     paramsExecCmd(topic, payload);
                   };
                   #endif // CONFIG_MQTT_COMMAND_ENABLE
+                  break;
+
+                case OPT_KIND_SIGNAL:
+                case OPT_KIND_SIGNAL_AUTOCLR:
+                  if (strcmp(payload, "") != 0) {
+                    paramsProcessSignal(item, payload);
+                  };
                   break;
 
                 case OPT_KIND_PARAMETER:
