@@ -62,15 +62,15 @@ bool paramsInit()
   };
   
   #if CONFIG_MQTT_OTA_ENABLE
-  paramsRegisterValue(OPT_KIND_OTA, OPT_TYPE_STRING, 
-    nullptr, 
+  paramsRegisterValueEx(OPT_KIND_OTA, OPT_TYPE_STRING, 
+    PARAM_HANDLER_NONE, nullptr, 
     nullptr, CONFIG_MQTT_OTA_TOPIC, CONFIG_MQTT_OTA_NAME, 
     CONFIG_MQTT_OTA_QOS, nullptr);
   #endif // CONFIG_MQTT_OTA_ENABLE
 
   #if CONFIG_MQTT_COMMAND_ENABLE
-  paramsRegisterValue(OPT_KIND_COMMAND, OPT_TYPE_STRING,
-    nullptr, 
+  paramsRegisterValueEx(OPT_KIND_COMMAND, OPT_TYPE_STRING,
+    PARAM_HANDLER_NONE, nullptr, 
     nullptr, CONFIG_MQTT_COMMAND_TOPIC, CONFIG_MQTT_COMMAND_NAME, 
     CONFIG_MQTT_COMMAND_QOS, nullptr);
   #endif // CONFIG_MQTT_COMMAND_ENABLE
@@ -242,6 +242,24 @@ void paramsMqttTopicsCreateEntry(paramsEntryHandle_t entry)
       if (entry->topic_subscribe) {
         rlog_d(logTAG, "Generated subscription topic for data \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
       } else {
+        rlog_e(logTAG, "Failed to generate subscription topic!");
+      };
+    }
+
+    // Signals. Topic is // %LOCATION% / %DEVICE% / ... without confirmations
+    else if ((entry->type_param == OPT_KIND_SIGNAL) || (entry->type_param == OPT_KIND_SIGNAL_AUTOCLR)) {
+      if ((entry->group) && (entry->group->topic)) {
+        entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, entry->group->topic, entry->key, nullptr);
+        if (entry->topic_subscribe) {
+          rlog_d(logTAG, "Generated subscription topic for parameter \"%s.%s\": [ %s ]", entry->group->key, entry->key, entry->topic_subscribe);
+        };
+      } else {
+        entry->topic_subscribe = mqttGetTopicDevice(_paramsMqttPrimary, CONFIG_MQTT_ROOT_PARAMS_LOCAL, entry->key, nullptr, nullptr);
+        if (entry->topic_subscribe) {
+          rlog_d(logTAG, "Generated subscription topic for parameter \"%s\": [ %s ]", entry->key, entry->topic_subscribe);
+        };
+      };
+      if (!entry->topic_subscribe) {
         rlog_e(logTAG, "Failed to generate subscription topic!");
       };
     }
@@ -517,7 +535,8 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
   return item;
 }
 
-paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
+paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const param_type_t type_value, 
+  param_handler_type_t type_handler, void* change_handler,
   paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value)
@@ -546,6 +565,7 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       };
       item->type_param = type_param;
       item->type_value = type_value;
+      item->type_handler = type_handler;
       item->handler = change_handler;
       item->friendly = name_friendly;
       item->group = parent_group;
@@ -566,6 +586,8 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
       // Read value from NVS storage
       if ((item->type_param == OPT_KIND_COMMAND) || (item->type_param == OPT_KIND_OTA)) {
         rlog_d(logTAG, "System handler \"%s\" registered", item->key);
+      } else if ((item->type_param == OPT_KIND_SIGNAL) || (item->type_param == OPT_KIND_SIGNAL_AUTOCLR)) {
+        rlog_d(logTAG, "Signal \"%s\" registered", item->key);
       } else {
         if ((item->type_param == OPT_KIND_PARAMETER) 
          || (item->type_param == OPT_KIND_PARAMETER_LOCATION) 
@@ -578,8 +600,18 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
           };
           if (prev_value) {
             if (!equal2value(item->type_value, prev_value, item->value)) {
-              eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_RESTORED, &item->id, sizeof(item->id), portMAX_DELAY);
-              if (item->handler) item->handler->onChange(PARAM_NVS_RESTORED);
+              if (item->type_handler > PARAM_HANDLER_NONE) {
+                if (item->id > 0) {
+                  eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_RESTORED, &item->id, sizeof(item->id), portMAX_DELAY);
+                };
+                if ((item->type_handler = PARAM_HANDLER_CLASS) && (item->handler)) {
+                  param_handler_t* hdr = (param_handler_t*)item->handler;
+                  hdr->onChange(PARAM_NVS_RESTORED);
+                } else if ((item->type_handler = PARAM_HANDLER_CALLBACK) && (item->handler)) {
+                  params_callback_t cbf = (params_callback_t)item->handler;
+                  cbf(item, PARAM_NVS_RESTORED, item->value);
+                };
+              };
             };
             free(prev_value);
           };
@@ -605,7 +637,8 @@ paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const par
   return item;
 }
 
-paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
+paramsEntryHandle_t paramsRegisterCommonValueEx(const param_kind_t type_param, const param_type_t type_value, 
+  param_handler_type_t type_handler, void* change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value)
 {
@@ -614,8 +647,8 @@ paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, con
   };
 
   if (_pgCommon) {
-    return paramsRegisterValue(type_param, type_value, 
-      change_handler, 
+    return paramsRegisterValueEx(type_param, type_value, 
+      type_handler, change_handler, 
       _pgCommon, name_key, name_friendly, qos, value);
   };
 
@@ -836,6 +869,40 @@ void paramsExecCmd(char *topic, char *payload)
 #endif // CONFIG_MQTT_COMMAND_ENABLE
 
 // -----------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------- Signals -------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+void paramsProcessSignal(paramsEntryHandle_t item, char *payload)
+{
+  if (item->topic_subscribe && payload && (strlen(payload) > 0)) {
+    rlog_i(logTAG, "Received signal [ %s ] in topic \"%s\"", payload, item->topic_subscribe);
+    
+    // Post event and call change handler
+    if (item->type_handler > PARAM_HANDLER_NONE) {
+      if (item->id > 0) {
+        eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_CHANGED, &item->id, sizeof(item->id), portMAX_DELAY);
+      };
+      if ((item->type_handler = PARAM_HANDLER_CLASS) && (item->handler)) {
+        param_handler_t* hdr = (param_handler_t*)item->handler;
+        hdr->onChange(PARAM_SET_CHANGED);
+      } else if ((item->type_handler = PARAM_HANDLER_CALLBACK) && (item->handler)) {
+        params_callback_t cbf = (params_callback_t)item->handler;
+        cbf(item, PARAM_SET_CHANGED, payload);
+      };
+    };
+
+    // Clear topic
+    if (item->type_param == OPT_KIND_SIGNAL_AUTOCLR) {
+      mqttUnsubscribe(item->topic_subscribe);
+      vTaskDelay(1);
+      mqttPublish(item->topic_subscribe, nullptr, item->qos, false, false, false);
+      vTaskDelay(1);
+      mqttSubscribe(item->topic_subscribe, item->qos);
+    };
+  };
+}
+
+// -----------------------------------------------------------------------------------------------------------------------
 // --------------------------------------------------- Store new value ---------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
 
@@ -867,7 +934,8 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
 {
   OPTIONS_LOCK();
   if (entry) {
-    if ((entry->type_param != OPT_KIND_COMMAND) && (entry->type_param != OPT_KIND_OTA)) {
+    if ((entry->type_param != OPT_KIND_COMMAND) && (entry->type_param != OPT_KIND_OTA)
+      && (entry->type_param != OPT_KIND_SIGNAL) && (entry->type_param != OPT_KIND_SIGNAL_AUTOCLR)) {
       // Save the value in the storage
       if (((entry->type_param == OPT_KIND_PARAMETER) 
         || (entry->type_param == OPT_KIND_PARAMETER_LOCATION) 
@@ -878,8 +946,20 @@ void paramsValueStore(paramsEntryHandle_t entry, const bool callHandler)
         nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
       };
       // Post event and call change handler
-      if (callHandler) eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_INTERNAL, &entry->id, sizeof(entry->id), portMAX_DELAY);
-      if ((callHandler) && (entry->handler)) entry->handler->onChange(PARAM_SET_INTERNAL);      
+      if (callHandler) {
+        if (entry->type_handler > PARAM_HANDLER_NONE) {
+          if (entry->id > 0) {
+            eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_INTERNAL, &entry->id, sizeof(entry->id), portMAX_DELAY);
+          };
+          if ((entry->type_handler = PARAM_HANDLER_CLASS) && (entry->handler)) {
+            param_handler_t* hdr = (param_handler_t*)entry->handler;
+            hdr->onChange(PARAM_SET_INTERNAL);
+          } else if ((entry->type_handler = PARAM_HANDLER_CALLBACK) && (entry->handler)) {
+            params_callback_t cbf = (params_callback_t)entry->handler;
+            cbf(entry, PARAM_SET_INTERNAL, entry->value);
+          };
+        };
+      };
       // Publish the current value
       paramsMqttPublish(entry, true);
       // Send notification
@@ -915,7 +995,9 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
     if (equal2value(entry->type_value, entry->value, new_value)) {
       rlog_i(logTAG, "Received value does not differ from existing one, ignored");
       // Post event
-      eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_EQUALS, &entry->id, sizeof(entry->id), portMAX_DELAY);
+      if ((entry->type_handler > PARAM_HANDLER_NONE) && (entry->id > 0)) {
+        eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_EQUALS, &entry->id, sizeof(entry->id), portMAX_DELAY);
+      };
       // Publish value
       paramsMqttPublish(entry, publish_in_mqtt);
       // Send notification
@@ -945,8 +1027,18 @@ void _paramsValueSet(paramsEntryHandle_t entry, char *value, bool publish_in_mqt
           nvsWrite(entry->group->key, entry->key, entry->type_value, entry->value);
         };
         // Post event and call change handler
-        eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_CHANGED, &entry->id, sizeof(entry->id), portMAX_DELAY);
-        if (entry->handler) entry->handler->onChange(PARAM_SET_CHANGED);      
+        if (entry->type_handler > PARAM_HANDLER_NONE) {
+          if (entry->id > 0) {
+            eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_CHANGED, &entry->id, sizeof(entry->id), portMAX_DELAY);
+          };
+          if ((entry->type_handler = PARAM_HANDLER_CLASS) && (entry->handler)) {
+            param_handler_t* hdr = (param_handler_t*)entry->handler;
+            hdr->onChange(PARAM_SET_CHANGED);
+          } else if ((entry->type_handler = PARAM_HANDLER_CALLBACK) && (entry->handler)) {
+            params_callback_t cbf = (params_callback_t)entry->handler;
+            cbf(entry, PARAM_SET_CHANGED, entry->value);
+          };
+        };
         // Only for parameters...
         paramsMqttPublish(entry, publish_in_mqtt);
         // Send notification
@@ -1051,6 +1143,13 @@ void paramsMqttIncomingMessage(char *topic, char *payload, size_t len)
                     paramsExecCmd(topic, payload);
                   };
                   #endif // CONFIG_MQTT_COMMAND_ENABLE
+                  break;
+
+                case OPT_KIND_SIGNAL:
+                case OPT_KIND_SIGNAL_AUTOCLR:
+                  if (strcmp(payload, "") != 0) {
+                    paramsProcessSignal(item, payload);
+                  };
                   break;
 
                 case OPT_KIND_PARAMETER:

@@ -38,6 +38,13 @@ typedef enum {
   PARAM_SET_CHANGED
 } param_change_mode_t;
 
+typedef enum {
+  PARAM_HANDLER_NONE = 0,
+  PARAM_HANDLER_EVENT,
+  PARAM_HANDLER_CALLBACK,
+  PARAM_HANDLER_CLASS
+} param_handler_type_t;
+
 class param_handler_t {
   public:
     virtual ~param_handler_t() {};
@@ -56,7 +63,8 @@ typedef struct paramsGroup_t *paramsGroupHandle_t;
 typedef struct paramsEntry_t {
   param_kind_t type_param;
   param_type_t type_value;
-  param_handler_t *handler;
+  param_handler_type_t type_handler;
+  void *handler;
   paramsGroup_t *group;
   uint32_t id;
   const char *friendly;
@@ -74,6 +82,8 @@ typedef struct paramsEntry_t {
 } paramsEntry_t;
 typedef struct paramsEntry_t *paramsEntryHandle_t;
 
+typedef void (*params_callback_t) (paramsEntryHandle_t item, param_change_mode_t mode, void* value);
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -82,13 +92,21 @@ bool paramsInit();
 void paramsFree();
 
 paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_key, const char* name_topic, const char* name_friendly);
-paramsEntryHandle_t paramsRegisterValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
+
+paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const param_type_t type_value, 
+  param_handler_type_t type_handler, void* change_handler,
   paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
-paramsEntryHandle_t paramsRegisterCommonValue(const param_kind_t type_param, const param_type_t type_value, param_handler_t *change_handler,
+#define paramsRegisterValue(type_param, type_value, change_handler, parent_group, name_key, name_friendly, qos, value) \
+  paramsRegisterValueEx(type_param, type_value, PARAM_HANDLER_EVENT, change_handler, parent_group, name_key, name_friendly, qos, value)
+
+paramsEntryHandle_t paramsRegisterCommonValueEx(const param_kind_t type_param, const param_type_t type_value, 
+  param_handler_type_t type_handler, void* change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
+#define paramsRegisterCommonValue(type_param, type_value, change_handler, name_key, name_friendly, qos, value) \
+  paramsRegisterCommonValueEx(type_param, type_value, PARAM_HANDLER_EVENT, change_handler, name_key, name_friendly, qos, value)
 
 void paramsSetLimitsI8(paramsEntryHandle_t entry, int8_t min_value, int8_t max_value);
 void paramsSetLimitsU8(paramsEntryHandle_t entry, uint8_t min_value, uint8_t max_value);

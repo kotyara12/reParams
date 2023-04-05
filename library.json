@@ -1,6 +1,6 @@
 {
   "name": "reParams",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Library for storing and managing parameters ESP32 (ESP-IDF)",
   "keywords": "esp32",
   "authors":
