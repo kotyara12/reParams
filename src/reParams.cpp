@@ -536,7 +536,7 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
 }
 
 paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const param_type_t type_value, 
-  param_handler_type_t type_handler, void* change_handler,
+  param_handler_type_t handler_type, void* change_handler,
   paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value)
@@ -565,7 +565,7 @@ paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const p
       };
       item->type_param = type_param;
       item->type_value = type_value;
-      item->type_handler = type_handler;
+      item->type_handler = handler_type;
       item->handler = change_handler;
       item->friendly = name_friendly;
       item->group = parent_group;
@@ -638,7 +638,7 @@ paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const p
 }
 
 paramsEntryHandle_t paramsRegisterCommonValueEx(const param_kind_t type_param, const param_type_t type_value, 
-  param_handler_type_t type_handler, void* change_handler,
+  param_handler_type_t handler_type, void* change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value)
 {
@@ -648,7 +648,7 @@ paramsEntryHandle_t paramsRegisterCommonValueEx(const param_kind_t type_param, c
 
   if (_pgCommon) {
     return paramsRegisterValueEx(type_param, type_value, 
-      type_handler, change_handler, 
+      handler_type, change_handler, 
       _pgCommon, name_key, name_friendly, qos, value);
   };
 
@@ -882,12 +882,14 @@ void paramsProcessSignal(paramsEntryHandle_t item, char *payload)
       if (item->id > 0) {
         eventLoopPost(RE_PARAMS_EVENTS, RE_PARAMS_CHANGED, &item->id, sizeof(item->id), portMAX_DELAY);
       };
-      if ((item->type_handler = PARAM_HANDLER_CLASS) && (item->handler)) {
-        param_handler_t* hdr = (param_handler_t*)item->handler;
-        hdr->onChange(PARAM_SET_CHANGED);
-      } else if ((item->type_handler = PARAM_HANDLER_CALLBACK) && (item->handler)) {
-        params_callback_t cbf = (params_callback_t)item->handler;
-        cbf(item, PARAM_SET_CHANGED, payload);
+      if (item->handler) {
+        if (item->type_handler == PARAM_HANDLER_CLASS) {
+          param_handler_t* hdr = (param_handler_t*)item->handler;
+          hdr->onChange(PARAM_SET_CHANGED);
+        } else if (item->type_handler == PARAM_HANDLER_CALLBACK) {
+          params_callback_t cbf = (params_callback_t)item->handler;
+          cbf(item, PARAM_SET_CHANGED, payload);
+        };
       };
     };
 

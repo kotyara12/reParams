@@ -94,7 +94,7 @@ void paramsFree();
 paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char* name_key, const char* name_topic, const char* name_friendly);
 
 paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const param_type_t type_value, 
-  param_handler_type_t type_handler, void* change_handler,
+  param_handler_type_t handler_type, void* change_handler,
   paramsGroupHandle_t parent_group, 
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
@@ -102,7 +102,7 @@ paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const p
   paramsRegisterValueEx(type_param, type_value, PARAM_HANDLER_EVENT, change_handler, parent_group, name_key, name_friendly, qos, value)
 
 paramsEntryHandle_t paramsRegisterCommonValueEx(const param_kind_t type_param, const param_type_t type_value, 
-  param_handler_type_t type_handler, void* change_handler,
+  param_handler_type_t handler_type, void* change_handler,
   const char* name_key, const char* name_friendly, const int qos, 
   void * value);
 #define paramsRegisterCommonValue(type_param, type_value, change_handler, name_key, name_friendly, qos, value) \
