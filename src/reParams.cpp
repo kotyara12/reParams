@@ -13,7 +13,7 @@ static paramsGroupHeadHandle_t paramsGroups = nullptr;
 static paramsEntryHeadHandle_t paramsList = nullptr;
 static SemaphoreHandle_t paramsLock = nullptr;
 
-#define OPTIONS_LOCK() do {} while (xSemaphoreTake(paramsLock, portMAX_DELAY) != pdPASS)
+#define OPTIONS_LOCK() xSemaphoreTake(paramsLock, portMAX_DELAY)
 #define OPTIONS_UNLOCK() xSemaphoreGive(paramsLock)
 
 static const char* logTAG = "PRMS";
@@ -80,8 +80,6 @@ bool paramsInit()
 
 void paramsFree()
 {
-  OPTIONS_LOCK();
-
   if (paramsList) {
     paramsEntryHandle_t itemL, tmpL;
     STAILQ_FOREACH_SAFE(itemL, paramsList, next, tmpL) {
@@ -114,8 +112,6 @@ void paramsFree()
     free(paramsGroups);
   };
 
-  OPTIONS_UNLOCK();
-  
   vSemaphoreDelete(paramsLock);
 }
 
@@ -490,10 +486,12 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
     STAILQ_FOREACH(item, paramsGroups, next) {
       if (name_key) {
         if ((item->parent == parent_group) && (strcasecmp(item->key, name_key) == 0)) {
+          OPTIONS_UNLOCK();
           return item;
         };
       } else {
         if ((item->parent == parent_group) && (item->key == nullptr)) {
+          OPTIONS_UNLOCK();
           return item;
         };
       };
@@ -552,6 +550,7 @@ paramsEntryHandle_t paramsRegisterValueEx(const param_kind_t type_param, const p
   if (paramsList) {
     STAILQ_FOREACH(item, paramsList, next) {
       if ((item->group == parent_group) && (strcasecmp(item->key, name_key) == 0)) {
+        OPTIONS_UNLOCK();
         return item;
       };
     };
