@@ -502,12 +502,12 @@ paramsGroupHandle_t paramsRegisterGroup(paramsGroup_t* parent_group, const char*
       item->parent = parent_group;
       if (item->parent) {
         if (item->parent->key) {
-          item->key = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_GROUP_DELIMITER, item->parent->key, name_key);
+          item->key = malloc_stringf("%s.%s", item->parent->key, name_key);
         } else {
           item->key = (char*)name_key;
         };
         if (item->parent->friendly) {
-          item->friendly = malloc_stringf(CONFIG_MESSAGE_TG_PARAM_FIENDLY_DELIMITER, item->parent->friendly, name_friendly);
+          item->friendly = malloc_stringf("%s / %s", item->parent->friendly, name_friendly);
         } else {
           item->friendly = (char*)name_friendly;
         };
